@@ -426,9 +426,9 @@ export default function CreatorUpload() {
             {!demoVideo && !uploading && (
               <button
                 onClick={() => demoInputRef.current?.click()}
-                className="w-full aspect-[9/16] rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-3 bg-card hover:border-primary/50 transition-colors"
+                className="w-full h-36 rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-2 bg-card hover:border-primary/50 transition-colors"
               >
-                <Upload size={32} className="text-muted-foreground" />
+                <Upload size={28} className="text-muted-foreground" />
                 <span className="text-sm text-muted-foreground font-medium">Tap to select demo clip</span>
                 <span className="text-xs text-muted-foreground">MP4 · Max 30 seconds</span>
               </button>
@@ -436,7 +436,7 @@ export default function CreatorUpload() {
 
             {/* Uploading state — show thumbnail + progress overlay */}
             {uploading && uploadingType === "demo" && (
-              <div className="relative w-full aspect-[9/16] rounded-2xl overflow-hidden bg-black">
+              <div className="relative w-full h-48 rounded-2xl overflow-hidden bg-black">
                 {pendingLocalUrl && (
                   <video src={pendingLocalUrl} className="w-full h-full object-cover opacity-40" muted playsInline />
                 )}
@@ -447,7 +447,7 @@ export default function CreatorUpload() {
             {/* Uploaded state */}
             {demoVideo && !uploading && (
               <div className="space-y-3">
-                <div className="relative w-full aspect-[9/16] rounded-2xl overflow-hidden bg-black">
+                <div className="relative w-full h-48 rounded-2xl overflow-hidden bg-black">
                   <video src={demoVideo.localUrl} className="w-full h-full object-cover" muted loop playsInline autoPlay />
                   <div className="absolute top-3 left-3 bg-black/60 rounded-full px-2.5 py-1 flex items-center gap-1.5">
                     <CheckCircle size={12} className="text-green-400" />
@@ -509,9 +509,9 @@ export default function CreatorUpload() {
             {!tutorialVideo && !uploading && (
               <button
                 onClick={() => tutorialInputRef.current?.click()}
-                className="w-full aspect-[9/16] rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-3 bg-card hover:border-secondary/50 transition-colors"
+                className="w-full h-36 rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-2 bg-card hover:border-secondary/50 transition-colors"
               >
-                <Upload size={32} className="text-muted-foreground" />
+                <Upload size={28} className="text-muted-foreground" />
                 <span className="text-sm text-muted-foreground font-medium">Tap to select full tutorial</span>
                 <span className="text-xs text-muted-foreground">MP4 · Max 5 minutes</span>
               </button>
@@ -519,7 +519,7 @@ export default function CreatorUpload() {
 
             {/* Uploading state */}
             {uploading && uploadingType === "tutorial" && (
-              <div className="relative w-full aspect-[9/16] rounded-2xl overflow-hidden bg-black">
+              <div className="relative w-full h-48 rounded-2xl overflow-hidden bg-black">
                 {pendingLocalUrl && (
                   <video src={pendingLocalUrl} className="w-full h-full object-cover opacity-40" muted playsInline />
                 )}
@@ -530,7 +530,7 @@ export default function CreatorUpload() {
             {/* Uploaded state */}
             {tutorialVideo && !uploading && (
               <div className="space-y-3">
-                <div className="relative w-full aspect-[9/16] rounded-2xl overflow-hidden bg-black">
+                <div className="relative w-full h-48 rounded-2xl overflow-hidden bg-black">
                   <video src={tutorialVideo.localUrl} className="w-full h-full object-cover" muted loop playsInline autoPlay />
                   <div className="absolute top-3 left-3 bg-black/60 rounded-full px-2.5 py-1 flex items-center gap-1.5">
                     <CheckCircle size={12} className="text-green-400" />
