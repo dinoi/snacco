@@ -54,48 +54,55 @@ type UploadedVideo = {
 
 type Step = "meta" | "demo" | "tutorial" | "chapters" | "preview" | "done";
 
-// ── XHR upload with progress ──────────────────────────────────────────
-function uploadVideoXHR(
+// ── Direct-to-S3 upload via Forge presigned URL ──────────────────────
+// This bypasses the app gateway entirely, so there is no 413 size limit.
+async function uploadVideoDirect(
   file: File,
+  userId: number,
   type: "demo" | "tutorial",
   onProgress: (pct: number) => void
 ): Promise<{ key: string; url: string }> {
-  return new Promise((resolve, reject) => {
-    const form = new FormData();
-    form.append("video", file);
-    form.append("type", type);
+  const forgeUrl = (import.meta.env.VITE_FRONTEND_FORGE_API_URL as string)?.replace(/\/+$/, "");
+  const forgeKey = import.meta.env.VITE_FRONTEND_FORGE_API_KEY as string;
+  if (!forgeUrl || !forgeKey) throw new Error("Storage not configured");
 
+  // 1. Build a unique storage key
+  const hash = Math.random().toString(36).slice(2, 10);
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const key = `videos/${userId}/${type}/${Date.now()}_${safeName}_${hash}`;
+
+  // 2. Get a presigned PUT URL from Forge (tiny JSON request — no size limit)
+  const presignUrl = new URL("v1/storage/presign/put", forgeUrl + "/");
+  presignUrl.searchParams.set("path", key);
+  const presignResp = await fetch(presignUrl.toString(), {
+    headers: { Authorization: `Bearer ${forgeKey}` },
+  });
+  if (!presignResp.ok) {
+    const msg = await presignResp.text().catch(() => presignResp.statusText);
+    throw new Error(`Could not get upload URL (${presignResp.status}): ${msg}`);
+  }
+  const { url: s3Url } = (await presignResp.json()) as { url: string };
+  if (!s3Url) throw new Error("Empty upload URL returned");
+
+  // 3. PUT the file directly to S3 with XHR so we get progress events
+  await new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/api/upload-video");
-    xhr.withCredentials = true; // send session cookie with the request
+    xhr.open("PUT", s3Url);
+    xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
 
     xhr.upload.addEventListener("progress", (e) => {
-      if (e.lengthComputable) {
-        onProgress(Math.round((e.loaded / e.total) * 100));
-      }
+      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
     });
-
     xhr.addEventListener("load", () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          resolve(JSON.parse(xhr.responseText));
-        } catch {
-          reject(new Error("Invalid server response"));
-        }
-      } else if (xhr.status === 401) {
-        reject(new Error("Session expired — please sign out and sign back in, then try again."));
-      } else {
-        let msg = `Upload failed (${xhr.status})`;
-        try { msg = JSON.parse(xhr.responseText)?.error ?? msg; } catch {}
-        reject(new Error(msg));
-      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error(`S3 upload failed (${xhr.status})`));
     });
-
     xhr.addEventListener("error", () => reject(new Error("Network error during upload")));
     xhr.addEventListener("abort", () => reject(new Error("Upload cancelled")));
-
-    xhr.send(form);
+    xhr.send(file);
   });
+
+  return { key, url: `/manus-storage/${key}` };
 }
 
 // ── Get video duration from a File ───────────────────────────────────
@@ -194,7 +201,7 @@ export default function CreatorUpload() {
     setUploadError(null); // clear any previous error
 
     try {
-      const result = await uploadVideoXHR(file, type, setUploadProgress);
+      const result = await uploadVideoDirect(file, user!.id, type, setUploadProgress);
       const uploaded: UploadedVideo = {
         url: result.url,
         key: result.key,
