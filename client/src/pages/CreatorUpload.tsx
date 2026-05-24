@@ -427,13 +427,21 @@ export default function CreatorUpload() {
               </button>
             )}
 
-            {/* Uploading state — show thumbnail + progress overlay */}
+            {/* Uploading state — full-height so label is always visible */}
             {uploading && uploadingType === "demo" && (
-              <div className="relative w-full h-48 rounded-2xl overflow-hidden bg-black">
+              <div className="relative w-full rounded-2xl overflow-hidden bg-black flex flex-col items-center justify-center gap-4 px-6 py-10" style={{ minHeight: '60vh' }}>
                 {pendingLocalUrl && (
-                  <video src={pendingLocalUrl} className="w-full h-full object-cover opacity-40" muted playsInline />
+                  <video src={pendingLocalUrl} className="absolute inset-0 w-full h-full object-cover opacity-20" muted playsInline />
                 )}
-                <UploadOverlay type="demo" />
+                <div className="relative z-10 flex flex-col items-center gap-4 w-full">
+                  <Loader2 size={32} className="text-primary animate-spin" />
+                  <p className="text-white font-bold text-lg">Uploading Demo Clip…</p>
+                  <p className="text-white/60 text-sm">{uploadProgress}% complete</p>
+                  <div className="w-full max-w-xs h-2 bg-white/20 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-200"
+                      style={{ width: `${uploadProgress}%`, background: "linear-gradient(90deg, oklch(0.65 0.30 340), oklch(0.55 0.28 15))" }} />
+                  </div>
+                </div>
               </div>
             )}
 
@@ -503,13 +511,21 @@ export default function CreatorUpload() {
               </button>
             )}
 
-            {/* Uploading state */}
+            {/* Uploading state — full-height so label is always visible */}
             {uploading && uploadingType === "tutorial" && (
-              <div className="relative w-full h-48 rounded-2xl overflow-hidden bg-black">
+              <div className="relative w-full rounded-2xl overflow-hidden bg-black flex flex-col items-center justify-center gap-4 px-6 py-10" style={{ minHeight: '60vh' }}>
                 {pendingLocalUrl && (
-                  <video src={pendingLocalUrl} className="w-full h-full object-cover opacity-40" muted playsInline />
+                  <video src={pendingLocalUrl} className="absolute inset-0 w-full h-full object-cover opacity-20" muted playsInline />
                 )}
-                <UploadOverlay type="tutorial" />
+                <div className="relative z-10 flex flex-col items-center gap-4 w-full">
+                  <Loader2 size={32} className="text-primary animate-spin" />
+                  <p className="text-white font-bold text-lg">Uploading Full Tutorial…</p>
+                  <p className="text-white/60 text-sm">{uploadProgress}% complete</p>
+                  <div className="w-full max-w-xs h-2 bg-white/20 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-200"
+                      style={{ width: `${uploadProgress}%`, background: "linear-gradient(90deg, oklch(0.65 0.30 340), oklch(0.55 0.28 15))" }} />
+                  </div>
+                </div>
               </div>
             )}
 
