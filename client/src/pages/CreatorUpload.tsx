@@ -108,6 +108,50 @@ function getVideoDuration(file: File): Promise<number> {
   });
 }
 
+// ── Generate a thumbnail data-URL from a video File ──────────────────
+// Uses canvas to capture a frame — works on iOS Safari where video
+// background thumbnails don't render without user interaction.
+function generateThumbnail(file: File): Promise<string | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "auto";
+    const cleanup = () => URL.revokeObjectURL(url);
+
+    const capture = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth || 320;
+        canvas.height = video.videoHeight || 568;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { cleanup(); resolve(null); return; }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+        cleanup();
+        resolve(dataUrl);
+      } catch {
+        cleanup();
+        resolve(null);
+      }
+    };
+
+    video.addEventListener("seeked", capture, { once: true });
+    video.addEventListener("error", () => { cleanup(); resolve(null); }, { once: true });
+    // Some browsers need play() before seeking; use a short timeout as fallback
+    video.addEventListener("loadeddata", () => {
+      video.currentTime = 0.5;
+    }, { once: true });
+    video.addEventListener("canplay", () => {
+      video.currentTime = 0.5;
+    }, { once: true });
+
+    video.src = url;
+    video.load();
+  });
+}
+
 export default function CreatorUpload() {
   const { isAuthenticated, user } = useAuth();
   const [, navigate] = useLocation();
@@ -127,7 +171,8 @@ export default function CreatorUpload() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadingType, setUploadingType] = useState<"demo" | "tutorial" | null>(null);
-  const [pendingLocalUrl, setPendingLocalUrl] = useState<string | null>(null); // thumbnail shown during upload
+  const [pendingLocalUrl, setPendingLocalUrl] = useState<string | null>(null); // raw object URL (fallback)
+  const [thumbnailDataUrl, setThumbnailDataUrl] = useState<string | null>(null); // canvas-captured JPEG, works on iOS
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   // Player state (chapter marking step)
@@ -185,13 +230,17 @@ export default function CreatorUpload() {
       return;
     }
 
-    // Show thumbnail immediately while uploading
+    // Generate a canvas thumbnail (works on iOS Safari) and start upload
     const localUrl = URL.createObjectURL(file);
     setPendingLocalUrl(localUrl);
+    setThumbnailDataUrl(null); // clear previous while generating
     setUploading(true);
     setUploadProgress(0);
     setUploadingType(type);
     setUploadError(null); // clear any previous error
+
+    // Generate thumbnail in parallel — don't await so upload starts immediately
+    generateThumbnail(file).then((dataUrl) => setThumbnailDataUrl(dataUrl));
 
     try {
       const result = await uploadVideoDirect(file, presignMutate, type, setUploadProgress);
@@ -441,8 +490,13 @@ export default function CreatorUpload() {
             {/* Uploading state — full-height so label is always visible */}
             {uploading && uploadingType === "demo" && (
               <div className="relative w-full rounded-2xl overflow-hidden bg-black flex flex-col items-center justify-center gap-4 px-6 py-10" style={{ minHeight: '60vh' }}>
-                {pendingLocalUrl && (
-                  <video src={pendingLocalUrl} className="absolute inset-0 w-full h-full object-cover opacity-20" muted playsInline />
+                {/* Use canvas-captured JPEG thumbnail for iOS compatibility */}
+                {(thumbnailDataUrl || pendingLocalUrl) && (
+                  <img
+                    src={thumbnailDataUrl ?? pendingLocalUrl!}
+                    className="absolute inset-0 w-full h-full object-cover opacity-20"
+                    alt=""
+                  />
                 )}
                 <div className="relative z-10 flex flex-col items-center gap-4 w-full">
                   <Loader2 size={32} className="text-primary animate-spin" />
@@ -539,8 +593,13 @@ export default function CreatorUpload() {
             {/* Uploading state — full-height so label is always visible */}
             {uploading && uploadingType === "tutorial" && (
               <div className="relative w-full rounded-2xl overflow-hidden bg-black flex flex-col items-center justify-center gap-4 px-6 py-10" style={{ minHeight: '60vh' }}>
-                {pendingLocalUrl && (
-                  <video src={pendingLocalUrl} className="absolute inset-0 w-full h-full object-cover opacity-20" muted playsInline />
+                {/* Use canvas-captured JPEG thumbnail for iOS compatibility */}
+                {(thumbnailDataUrl || pendingLocalUrl) && (
+                  <img
+                    src={thumbnailDataUrl ?? pendingLocalUrl!}
+                    className="absolute inset-0 w-full h-full object-cover opacity-20"
+                    alt=""
+                  />
                 )}
                 <div className="relative z-10 flex flex-col items-center gap-4 w-full">
                   <Loader2 size={32} className="text-primary animate-spin" />
