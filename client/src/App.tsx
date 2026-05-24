@@ -4,32 +4,55 @@ import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import Home from "./pages/Home";
+import Feed from "./pages/Feed";
+import TutorialDetail from "./pages/TutorialDetail";
+import Player from "./pages/Player";
+import Library from "./pages/Library";
+import Profile from "./pages/Profile";
+import CreatorUpload from "./pages/CreatorUpload";
+import AdminLayout from "./pages/admin/AdminLayout";
+import AdminUsers from "./pages/admin/AdminUsers";
+import AdminContent from "./pages/admin/AdminContent";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import MobileNav from "./components/MobileNav";
+import { useAuth } from "./_core/hooks/useAuth";
+
+function MobileApp() {
+  const { isAuthenticated } = useAuth();
+  return (
+    <div className="min-h-dvh bg-background flex flex-col max-w-md mx-auto relative">
+      <div className="flex-1 pb-20">
+        <Switch>
+          <Route path="/" component={Feed} />
+          <Route path="/tutorial/:id" component={TutorialDetail} />
+          <Route path="/play/:id" component={Player} />
+          <Route path="/library" component={Library} />
+          <Route path="/profile" component={Profile} />
+          <Route path="/creator/upload" component={CreatorUpload} />
+          <Route component={NotFound} />
+        </Switch>
+      </div>
+      {isAuthenticated && <MobileNav />}
+    </div>
+  );
+}
 
 function Router() {
-  // make sure to consider if you need authentication for certain routes
   return (
     <Switch>
-      <Route path={"/"} component={Home} />
-      <Route path={"/404"} component={NotFound} />
-      {/* Final fallback route */}
-      <Route component={NotFound} />
+      <Route path="/admin" component={AdminDashboard} />
+      <Route path="/admin/users" component={AdminUsers} />
+      <Route path="/admin/content" component={AdminContent} />
+      <Route path="/admin/:rest*">{() => <AdminLayout />}</Route>
+      <Route component={MobileApp} />
     </Switch>
   );
 }
 
-// NOTE: About Theme
-// - First choose a default theme according to your design style (dark or light bg), than change color palette in index.css
-//   to keep consistent foreground/background color across components
-// - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
-
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider
-        defaultTheme="light"
-        // switchable
-      >
+      <ThemeProvider defaultTheme="dark">
         <TooltipProvider>
           <Toaster />
           <Router />
