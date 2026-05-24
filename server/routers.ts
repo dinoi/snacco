@@ -156,19 +156,36 @@ export const appRouter = router({
       return getTutorialsByCreator(ctx.user.id);
     }),
 
-    // Creator: upload video file and get storage URL
-    uploadVideo: protectedProcedure
+    // Creator: get a presigned S3 PUT URL so the browser can upload directly
+    // (avoids routing the large video body through the app gateway)
+    presignUpload: protectedProcedure
       .input(z.object({
         fileName: z.string(),
-        fileBase64: z.string(),
         mimeType: z.string().default("video/mp4"),
         type: z.enum(["demo", "tutorial"]),
       }))
       .mutation(async ({ ctx, input }) => {
-        const buffer = Buffer.from(input.fileBase64, "base64");
-        const key = `videos/${ctx.user.id}/${input.type}/${Date.now()}_${input.fileName}`;
-        const { url } = await storagePut(key, buffer, input.mimeType);
-        return { key, url };
+        const { ENV } = await import("./_core/env");
+        const forgeUrl = ENV.forgeApiUrl.replace(/\/+$/, "");
+        const forgeKey = ENV.forgeApiKey;
+
+        const hash = Math.random().toString(36).slice(2, 10);
+        const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const key = `videos/${ctx.user.id}/${input.type}/${Date.now()}_${safeName}_${hash}`;
+
+        const presignUrl = new URL("v1/storage/presign/put", forgeUrl + "/");
+        presignUrl.searchParams.set("path", key);
+        const resp = await fetch(presignUrl.toString(), {
+          headers: { Authorization: `Bearer ${forgeKey}` },
+        });
+        if (!resp.ok) {
+          const msg = await resp.text().catch(() => resp.statusText);
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Presign failed: ${msg}` });
+        }
+        const { url: s3Url } = (await resp.json()) as { url: string };
+        if (!s3Url) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Empty presign URL" });
+
+        return { key, s3Url, storageUrl: `/manus-storage/${key}` };
       }),
 
     // Creator: publish a tutorial with chapters

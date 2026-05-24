@@ -54,37 +54,24 @@ type UploadedVideo = {
 
 type Step = "meta" | "demo" | "tutorial" | "chapters" | "preview" | "done";
 
-// ── Direct-to-S3 upload via Forge presigned URL ──────────────────────
-// This bypasses the app gateway entirely, so there is no 413 size limit.
+// ── Direct-to-S3 upload via server-issued presigned URL ───────────────
+// Step 1: ask our server (which has the full server-side Forge key) for a
+//         presigned S3 PUT URL — this is a tiny JSON tRPC call, no size limit.
+// Step 2: PUT the file directly to S3 via XHR — bypasses the gateway entirely.
 async function uploadVideoDirect(
   file: File,
-  userId: number,
+  presignMutate: (vars: { fileName: string; mimeType: string; type: "demo" | "tutorial" }) => Promise<{ key: string; s3Url: string; storageUrl: string }>,
   type: "demo" | "tutorial",
   onProgress: (pct: number) => void
 ): Promise<{ key: string; url: string }> {
-  const forgeUrl = (import.meta.env.VITE_FRONTEND_FORGE_API_URL as string)?.replace(/\/+$/, "");
-  const forgeKey = import.meta.env.VITE_FRONTEND_FORGE_API_KEY as string;
-  if (!forgeUrl || !forgeKey) throw new Error("Storage not configured");
-
-  // 1. Build a unique storage key
-  const hash = Math.random().toString(36).slice(2, 10);
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const key = `videos/${userId}/${type}/${Date.now()}_${safeName}_${hash}`;
-
-  // 2. Get a presigned PUT URL from Forge (tiny JSON request — no size limit)
-  const presignUrl = new URL("v1/storage/presign/put", forgeUrl + "/");
-  presignUrl.searchParams.set("path", key);
-  const presignResp = await fetch(presignUrl.toString(), {
-    headers: { Authorization: `Bearer ${forgeKey}` },
+  // 1. Get presigned URL from our server (uses server-side Forge key)
+  const { key, s3Url, storageUrl } = await presignMutate({
+    fileName: file.name,
+    mimeType: file.type || "video/mp4",
+    type,
   });
-  if (!presignResp.ok) {
-    const msg = await presignResp.text().catch(() => presignResp.statusText);
-    throw new Error(`Could not get upload URL (${presignResp.status}): ${msg}`);
-  }
-  const { url: s3Url } = (await presignResp.json()) as { url: string };
-  if (!s3Url) throw new Error("Empty upload URL returned");
 
-  // 3. PUT the file directly to S3 with XHR so we get progress events
+  // 2. PUT file directly to S3 with progress tracking
   await new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", s3Url);
@@ -95,14 +82,14 @@ async function uploadVideoDirect(
     });
     xhr.addEventListener("load", () => {
       if (xhr.status >= 200 && xhr.status < 300) resolve();
-      else reject(new Error(`S3 upload failed (${xhr.status})`));
+      else reject(new Error(`Upload to storage failed (${xhr.status})`));
     });
     xhr.addEventListener("error", () => reject(new Error("Network error during upload")));
     xhr.addEventListener("abort", () => reject(new Error("Upload cancelled")));
     xhr.send(file);
   });
 
-  return { key, url: `/manus-storage/${key}` };
+  return { key, url: storageUrl };
 }
 
 // ── Get video duration from a File ───────────────────────────────────
@@ -150,6 +137,11 @@ export default function CreatorUpload() {
   const tutorialVideoRef = useRef<HTMLVideoElement>(null);
   const demoInputRef = useRef<HTMLInputElement>(null);
   const tutorialInputRef = useRef<HTMLInputElement>(null);
+
+  const presignUploadMutation = trpc.tutorials.presignUpload.useMutation();
+
+  const presignMutate = (vars: { fileName: string; mimeType: string; type: "demo" | "tutorial" }) =>
+    presignUploadMutation.mutateAsync(vars);
 
   const publishMutation = trpc.tutorials.publish.useMutation({
     onSuccess: () => {
@@ -201,7 +193,7 @@ export default function CreatorUpload() {
     setUploadError(null); // clear any previous error
 
     try {
-      const result = await uploadVideoDirect(file, user!.id, type, setUploadProgress);
+      const result = await uploadVideoDirect(file, presignMutate, type, setUploadProgress);
       const uploaded: UploadedVideo = {
         url: result.url,
         key: result.key,
