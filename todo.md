@@ -39,3 +39,16 @@
 - [x] Mobile viewport meta and touch optimisations
 - [x] Final visual QA pass
 - [x] Save checkpoint
+
+## Upload Fix (v1.1)
+- [x] Switch video upload from base64-JSON to multipart FormData via XHR (fixes upload failure for large files)
+- [x] Add server-side multipart upload endpoint at POST /api/upload-video using multer
+- [x] Show video thumbnail preview as soon as file is selected (before upload starts)
+- [x] Show clear label "Uploading Demo Clip" or "Uploading Full Tutorial" during upload
+- [x] Show upload progress bar with percentage
+- [x] Reorder steps: demo upload comes before tutorial upload (already the case, confirm)
+- [x] Show thumbnail of already-uploaded video in subsequent steps so user always knows what they uploaded
+- [x] Add clear descriptions of what a Demo Clip vs Full Tutorial is on each upload step
+- [x] Enforce demo clip max duration of 30 seconds (client-side check before upload)
+- [x] Enforce tutorial max duration of 5 minutes / 300 seconds (client-side check before upload)
+- [x] Show duration limit clearly on each upload step UI

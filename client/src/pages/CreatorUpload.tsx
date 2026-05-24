@@ -5,9 +5,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import {
   ArrowLeft,
   Upload,
-  Plus,
   Trash2,
-  GripVertical,
   Flag,
   CheckCircle,
   Loader2,
@@ -16,6 +14,9 @@ import {
   Eye,
   ChevronUp,
   ChevronDown,
+  Film,
+  Clapperboard,
+  Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +34,10 @@ import { cn, formatTime } from "@/lib/utils";
 
 const CATEGORIES = ["Dance", "Sports", "Music", "Illustration", "Magic", "Fitness", "Other"];
 
+// Duration limits
+const DEMO_MAX_SECONDS = 30;
+const TUTORIAL_MAX_SECONDS = 300; // 5 minutes
+
 type ChapterDraft = {
   id: string;
   label: string;
@@ -43,9 +48,67 @@ type UploadedVideo = {
   url: string;
   key: string;
   localUrl: string; // blob URL for preview
+  duration: number; // seconds
+  fileName: string;
 };
 
 type Step = "meta" | "demo" | "tutorial" | "chapters" | "preview" | "done";
+
+// ── XHR upload with progress ──────────────────────────────────────────
+function uploadVideoXHR(
+  file: File,
+  type: "demo" | "tutorial",
+  onProgress: (pct: number) => void
+): Promise<{ key: string; url: string }> {
+  return new Promise((resolve, reject) => {
+    const form = new FormData();
+    form.append("video", file);
+    form.append("type", type);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/upload-video");
+
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    });
+
+    xhr.addEventListener("load", () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText));
+        } catch {
+          reject(new Error("Invalid server response"));
+        }
+      } else {
+        let msg = `Upload failed (${xhr.status})`;
+        try { msg = JSON.parse(xhr.responseText)?.error ?? msg; } catch {}
+        reject(new Error(msg));
+      }
+    });
+
+    xhr.addEventListener("error", () => reject(new Error("Network error during upload")));
+    xhr.addEventListener("abort", () => reject(new Error("Upload cancelled")));
+
+    xhr.send(form);
+  });
+}
+
+// ── Get video duration from a File ───────────────────────────────────
+function getVideoDuration(file: File): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.onloadedmetadata = () => {
+      URL.revokeObjectURL(url);
+      resolve(video.duration);
+    };
+    video.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Could not read video")); };
+    video.src = url;
+  });
+}
 
 export default function CreatorUpload() {
   const { isAuthenticated, user } = useAuth();
@@ -61,17 +124,22 @@ export default function CreatorUpload() {
   const [tutorialVideo, setTutorialVideo] = useState<UploadedVideo | null>(null);
   const [chapters, setChapters] = useState<ChapterDraft[]>([]);
   const [newChapterLabel, setNewChapterLabel] = useState("");
+
+  // Upload state
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadingType, setUploadingType] = useState<"demo" | "tutorial" | null>(null);
+  const [pendingLocalUrl, setPendingLocalUrl] = useState<string | null>(null); // thumbnail shown during upload
+
+  // Player state (chapter marking step)
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [previewChapterIdx, setPreviewChapterIdx] = useState<number | null>(null);
 
   const tutorialVideoRef = useRef<HTMLVideoElement>(null);
   const demoInputRef = useRef<HTMLInputElement>(null);
   const tutorialInputRef = useRef<HTMLInputElement>(null);
 
-  const uploadMutation = trpc.tutorials.uploadVideo.useMutation();
   const publishMutation = trpc.tutorials.publish.useMutation({
     onSuccess: () => {
       utils.tutorials.feed.invalidate();
@@ -90,67 +158,77 @@ export default function CreatorUpload() {
     );
   }
 
-  const fileToBase64 = (file: File): Promise<string> =>
-    new Promise((res, rej) => {
-      const reader = new FileReader();
-      reader.onload = () => res((reader.result as string).split(",")[1]);
-      reader.onerror = rej;
-      reader.readAsDataURL(file);
-    });
-
-  const handleVideoUpload = async (file: File, type: "demo" | "tutorial") => {
+  // ── Video file handler ─────────────────────────────────────────────
+  const handleVideoSelect = async (file: File, type: "demo" | "tutorial") => {
     if (!file.type.startsWith("video/")) {
-      toast.error("Please select an MP4 video file.");
+      toast.error("Please select a video file (MP4 recommended).");
       return;
     }
-    if (file.size > 200 * 1024 * 1024) {
-      toast.error("File must be under 200MB.");
-      return;
-    }
-    setUploading(true);
+
+    // Check duration first
+    let dur: number;
     try {
-      const base64 = await fileToBase64(file);
-      const result = await uploadMutation.mutateAsync({
+      dur = await getVideoDuration(file);
+    } catch {
+      toast.error("Could not read video duration. Please try a different file.");
+      return;
+    }
+
+    const maxDur = type === "demo" ? DEMO_MAX_SECONDS : TUTORIAL_MAX_SECONDS;
+    if (dur > maxDur) {
+      const limit = type === "demo" ? "30 seconds" : "5 minutes";
+      toast.error(`${type === "demo" ? "Demo clips" : "Tutorial videos"} must be ${limit} or shorter. Your video is ${formatTime(dur)}.`);
+      return;
+    }
+
+    // Show thumbnail immediately while uploading
+    const localUrl = URL.createObjectURL(file);
+    setPendingLocalUrl(localUrl);
+    setUploading(true);
+    setUploadProgress(0);
+    setUploadingType(type);
+
+    try {
+      const result = await uploadVideoXHR(file, type, setUploadProgress);
+      const uploaded: UploadedVideo = {
+        url: result.url,
+        key: result.key,
+        localUrl,
+        duration: dur,
         fileName: file.name,
-        fileBase64: base64,
-        mimeType: file.type,
-        type,
-      });
-      const localUrl = URL.createObjectURL(file);
-      const uploaded: UploadedVideo = { url: result.url, key: result.key, localUrl };
+      };
       if (type === "demo") setDemoVideo(uploaded);
       else setTutorialVideo(uploaded);
-      toast.success(`${type === "demo" ? "Demo" : "Tutorial"} video uploaded!`);
-    } catch {
-      toast.error("Upload failed. Please try again.");
+      toast.success(`${type === "demo" ? "Demo clip" : "Tutorial video"} uploaded!`);
+    } catch (err: any) {
+      URL.revokeObjectURL(localUrl);
+      setPendingLocalUrl(null);
+      toast.error(err?.message ?? "Upload failed. Please try again.");
     } finally {
       setUploading(false);
+      setUploadProgress(0);
+      setUploadingType(null);
     }
   };
 
+  // ── Chapter tools ──────────────────────────────────────────────────
   const captureTimestamp = () => {
     const v = tutorialVideoRef.current;
     if (!v) return;
     const ts = Math.floor(v.currentTime);
     const label = newChapterLabel.trim() || `Step ${chapters.length + 1}`;
-    const newChapter: ChapterDraft = {
-      id: `${Date.now()}`,
-      label,
-      timestampSeconds: ts,
-    };
-    setChapters(prev => [...prev, newChapter].sort((a, b) => a.timestampSeconds - b.timestampSeconds)
-      .map((c, i) => ({ ...c })));
+    setChapters(prev =>
+      [...prev, { id: `${Date.now()}`, label, timestampSeconds: ts }]
+        .sort((a, b) => a.timestampSeconds - b.timestampSeconds)
+    );
     setNewChapterLabel("");
     toast.success(`Step captured at ${formatTime(ts)}`);
   };
 
-  const deleteChapter = (id: string) => {
-    setChapters(prev => prev.filter(c => c.id !== id));
-  };
+  const deleteChapter = (id: string) => setChapters(prev => prev.filter(c => c.id !== id));
 
-  const updateChapterLabel = (id: string, label: string) => {
+  const updateChapterLabel = (id: string, label: string) =>
     setChapters(prev => prev.map(c => c.id === id ? { ...c, label } : c));
-  };
 
   const moveChapter = (id: string, direction: -1 | 1) => {
     setChapters(prev => {
@@ -162,11 +240,6 @@ export default function CreatorUpload() {
       [next[idx], next[newIdx]] = [next[newIdx], next[idx]];
       return next;
     });
-  };
-
-  const jumpToChapter = (ts: number) => {
-    const v = tutorialVideoRef.current;
-    if (v) { v.currentTime = ts; setPreviewChapterIdx(null); }
   };
 
   const togglePlay = () => {
@@ -197,7 +270,7 @@ export default function CreatorUpload() {
     });
   };
 
-  // ── Done state ──────────────────────────────────────────────────────
+  // ── Done state ─────────────────────────────────────────────────────
   if (step === "done") {
     return (
       <div className="min-h-dvh bg-background flex flex-col items-center justify-center px-6 text-center gap-5">
@@ -224,23 +297,47 @@ export default function CreatorUpload() {
 
   const steps: Step[] = ["meta", "demo", "tutorial", "chapters", "preview"];
   const stepIdx = steps.indexOf(step);
-  const stepLabels = ["Details", "Demo", "Tutorial", "Chapters", "Preview"];
+  const stepLabels = ["Details", "Demo Clip", "Full Tutorial", "Chapters", "Preview"];
+
+  // ── Upload overlay (shown during upload) ──────────────────────────
+  const UploadOverlay = ({ type }: { type: "demo" | "tutorial" }) => (
+    <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-4 rounded-2xl z-10">
+      <div className="text-center">
+        <p className="text-white font-bold text-base">
+          Uploading {type === "demo" ? "Demo Clip" : "Full Tutorial"}…
+        </p>
+        <p className="text-white/60 text-sm mt-1">{uploadProgress}% complete</p>
+      </div>
+      {/* Progress bar */}
+      <div className="w-48 h-2 bg-white/20 rounded-full overflow-hidden">
+        <div
+          className="h-full rounded-full transition-all duration-200"
+          style={{
+            width: `${uploadProgress}%`,
+            background: "linear-gradient(90deg, oklch(0.65 0.30 340), oklch(0.55 0.28 15))",
+          }}
+        />
+      </div>
+      <Loader2 size={20} className="text-primary animate-spin" />
+    </div>
+  );
 
   return (
     <div className="min-h-dvh bg-background pb-8">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-background/90 backdrop-blur-md border-b border-border px-4 py-3 safe-top">
         <div className="flex items-center gap-3">
-          <button onClick={() => stepIdx > 0 ? setStep(steps[stepIdx - 1]) : navigate("/profile")}
-            className="w-9 h-9 rounded-full bg-muted flex items-center justify-center">
+          <button
+            onClick={() => stepIdx > 0 ? setStep(steps[stepIdx - 1]) : navigate("/profile")}
+            className="w-9 h-9 rounded-full bg-muted flex items-center justify-center"
+          >
             <ArrowLeft size={18} className="text-foreground" />
           </button>
           <div className="flex-1">
             <h1 className="text-base font-black text-foreground">Upload Tutorial</h1>
-            <p className="text-xs text-muted-foreground">{stepLabels[stepIdx]} ({stepIdx + 1}/{steps.length})</p>
+            <p className="text-xs text-muted-foreground">{stepLabels[stepIdx]} · Step {stepIdx + 1} of {steps.length}</p>
           </div>
         </div>
-        {/* Progress bar */}
         <div className="mt-3 h-1 bg-muted rounded-full overflow-hidden">
           <div
             className="h-full rounded-full transition-all duration-500"
@@ -254,17 +351,13 @@ export default function CreatorUpload() {
 
       <div className="px-4 pt-5">
 
-        {/* ── Step 1: Meta ─────────────────────────────────────────────── */}
+        {/* ── Step 1: Meta ──────────────────────────────────────────── */}
         {step === "meta" && (
           <div className="space-y-4">
             <div className="space-y-1.5">
               <Label className="text-sm font-semibold text-foreground">Title *</Label>
-              <Input
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                placeholder="e.g. The Moonwalk Step-by-Step"
-                className="bg-card border-border"
-              />
+              <Input value={title} onChange={e => setTitle(e.target.value)}
+                placeholder="e.g. The Moonwalk Step-by-Step" className="bg-card border-border" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-sm font-semibold text-foreground">Category *</Label>
@@ -279,30 +372,22 @@ export default function CreatorUpload() {
             </div>
             <div className="space-y-1.5">
               <Label className="text-sm font-semibold text-foreground">Description</Label>
-              <Textarea
-                value={description}
-                onChange={e => setDescription(e.target.value)}
+              <Textarea value={description} onChange={e => setDescription(e.target.value)}
                 placeholder="What will learners be able to do after this tutorial?"
-                className="bg-card border-border resize-none"
-                rows={3}
-              />
+                className="bg-card border-border resize-none" rows={3} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-sm font-semibold text-foreground">Token Price</Label>
               <div className="flex gap-2">
                 {[1, 2, 3, 5].map(p => (
-                  <button
-                    key={p}
-                    onClick={() => setTokenPrice(p)}
+                  <button key={p} onClick={() => setTokenPrice(p)}
                     className={cn(
                       "flex-1 py-2.5 rounded-xl text-sm font-bold border transition-all",
                       tokenPrice === p
                         ? "bg-primary text-primary-foreground border-primary glow-pink"
                         : "bg-card text-muted-foreground border-border hover:border-primary/50"
                     )}
-                  >
-                    {p}
-                  </button>
+                  >{p}</button>
                 ))}
               </div>
             </div>
@@ -317,31 +402,61 @@ export default function CreatorUpload() {
           </div>
         )}
 
-        {/* ── Step 2: Demo video ────────────────────────────────────────── */}
+        {/* ── Step 2: Demo clip ─────────────────────────────────────── */}
         {step === "demo" && (
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">Upload a short preview clip (15–60 seconds) that shows the skill. This is what learners see in the feed.</p>
+            {/* What is a demo clip */}
+            <div className="bg-card border border-border rounded-2xl p-4 flex gap-3">
+              <Clapperboard size={20} className="text-primary shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-bold text-foreground">What is a Demo Clip?</p>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                  A short, punchy preview that shows the finished skill in action — no explanation, just the move. This is what learners scroll past in the feed and decide whether to buy. Think of it as your hook.
+                </p>
+                <div className="mt-2 flex items-center gap-1.5 text-xs text-primary font-semibold">
+                  <Info size={12} />
+                  Max 30 seconds · MP4 recommended
+                </div>
+              </div>
+            </div>
+
             <input ref={demoInputRef} type="file" accept="video/mp4,video/*" className="hidden"
-              onChange={e => { const f = e.target.files?.[0]; if (f) handleVideoUpload(f, "demo"); }} />
-            {!demoVideo ? (
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleVideoSelect(f, "demo"); e.target.value = ""; }} />
+
+            {!demoVideo && !uploading && (
               <button
                 onClick={() => demoInputRef.current?.click()}
-                disabled={uploading}
                 className="w-full aspect-[9/16] rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-3 bg-card hover:border-primary/50 transition-colors"
               >
-                {uploading ? <Loader2 size={32} className="text-primary animate-spin" /> : <Upload size={32} className="text-muted-foreground" />}
-                <span className="text-sm text-muted-foreground font-medium">{uploading ? "Uploading..." : "Tap to select demo clip"}</span>
-                <span className="text-xs text-muted-foreground">MP4 · Max 200MB</span>
+                <Upload size={32} className="text-muted-foreground" />
+                <span className="text-sm text-muted-foreground font-medium">Tap to select demo clip</span>
+                <span className="text-xs text-muted-foreground">MP4 · Max 30 seconds</span>
               </button>
-            ) : (
+            )}
+
+            {/* Uploading state — show thumbnail + progress overlay */}
+            {uploading && uploadingType === "demo" && (
+              <div className="relative w-full aspect-[9/16] rounded-2xl overflow-hidden bg-black">
+                {pendingLocalUrl && (
+                  <video src={pendingLocalUrl} className="w-full h-full object-cover opacity-40" muted playsInline />
+                )}
+                <UploadOverlay type="demo" />
+              </div>
+            )}
+
+            {/* Uploaded state */}
+            {demoVideo && !uploading && (
               <div className="space-y-3">
                 <div className="relative w-full aspect-[9/16] rounded-2xl overflow-hidden bg-black">
                   <video src={demoVideo.localUrl} className="w-full h-full object-cover" muted loop playsInline autoPlay />
-                  <div className="absolute top-3 right-3">
-                    <button onClick={() => { setDemoVideo(null); }} className="w-8 h-8 rounded-full bg-black/60 flex items-center justify-center">
-                      <Trash2 size={14} className="text-destructive" />
-                    </button>
+                  <div className="absolute top-3 left-3 bg-black/60 rounded-full px-2.5 py-1 flex items-center gap-1.5">
+                    <CheckCircle size={12} className="text-green-400" />
+                    <span className="text-white text-xs font-semibold">Demo Clip · {formatTime(demoVideo.duration)}</span>
                   </div>
+                  <button onClick={() => setDemoVideo(null)}
+                    className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/60 flex items-center justify-center">
+                    <Trash2 size={14} className="text-destructive" />
+                  </button>
                 </div>
                 <Button
                   className="w-full font-bold glow-pink"
@@ -355,48 +470,95 @@ export default function CreatorUpload() {
           </div>
         )}
 
-        {/* ── Step 3: Tutorial video ────────────────────────────────────── */}
+        {/* ── Step 3: Tutorial video ────────────────────────────────── */}
         {step === "tutorial" && (
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">Upload the full tutorial video. This is what learners practice with after unlocking.</p>
+            {/* Thumbnail of already-uploaded demo */}
+            {demoVideo && (
+              <div className="flex items-center gap-3 bg-card border border-border rounded-xl px-3 py-2">
+                <div className="w-10 h-14 rounded-lg overflow-hidden bg-black shrink-0">
+                  <video src={demoVideo.localUrl} className="w-full h-full object-cover" muted playsInline />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Demo clip uploaded</p>
+                  <p className="text-sm font-semibold text-foreground truncate">{demoVideo.fileName}</p>
+                  <p className="text-xs text-primary">{formatTime(demoVideo.duration)}</p>
+                </div>
+                <CheckCircle size={16} className="text-green-400 ml-auto shrink-0" />
+              </div>
+            )}
+
+            {/* What is a full tutorial */}
+            <div className="bg-card border border-border rounded-2xl p-4 flex gap-3">
+              <Film size={20} className="text-secondary shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-bold text-foreground">What is the Full Tutorial?</p>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                  The step-by-step teaching video that learners unlock with their tokens. Break the skill down clearly — slow it down, explain each part, repeat key moments. This is what they'll practice with using the Snacco player.
+                </p>
+                <div className="mt-2 flex items-center gap-1.5 text-xs text-secondary font-semibold">
+                  <Info size={12} />
+                  Max 5 minutes · MP4 recommended
+                </div>
+              </div>
+            </div>
+
             <input ref={tutorialInputRef} type="file" accept="video/mp4,video/*" className="hidden"
-              onChange={e => { const f = e.target.files?.[0]; if (f) handleVideoUpload(f, "tutorial"); }} />
-            {!tutorialVideo ? (
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleVideoSelect(f, "tutorial"); e.target.value = ""; }} />
+
+            {!tutorialVideo && !uploading && (
               <button
                 onClick={() => tutorialInputRef.current?.click()}
-                disabled={uploading}
-                className="w-full aspect-[9/16] rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-3 bg-card hover:border-primary/50 transition-colors"
+                className="w-full aspect-[9/16] rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-3 bg-card hover:border-secondary/50 transition-colors"
               >
-                {uploading ? <Loader2 size={32} className="text-primary animate-spin" /> : <Upload size={32} className="text-muted-foreground" />}
-                <span className="text-sm text-muted-foreground font-medium">{uploading ? "Uploading..." : "Tap to select tutorial video"}</span>
-                <span className="text-xs text-muted-foreground">MP4 · Max 200MB</span>
+                <Upload size={32} className="text-muted-foreground" />
+                <span className="text-sm text-muted-foreground font-medium">Tap to select full tutorial</span>
+                <span className="text-xs text-muted-foreground">MP4 · Max 5 minutes</span>
               </button>
-            ) : (
+            )}
+
+            {/* Uploading state */}
+            {uploading && uploadingType === "tutorial" && (
+              <div className="relative w-full aspect-[9/16] rounded-2xl overflow-hidden bg-black">
+                {pendingLocalUrl && (
+                  <video src={pendingLocalUrl} className="w-full h-full object-cover opacity-40" muted playsInline />
+                )}
+                <UploadOverlay type="tutorial" />
+              </div>
+            )}
+
+            {/* Uploaded state */}
+            {tutorialVideo && !uploading && (
               <div className="space-y-3">
                 <div className="relative w-full aspect-[9/16] rounded-2xl overflow-hidden bg-black">
                   <video src={tutorialVideo.localUrl} className="w-full h-full object-cover" muted loop playsInline autoPlay />
-                  <div className="absolute top-3 right-3">
-                    <button onClick={() => setTutorialVideo(null)} className="w-8 h-8 rounded-full bg-black/60 flex items-center justify-center">
-                      <Trash2 size={14} className="text-destructive" />
-                    </button>
+                  <div className="absolute top-3 left-3 bg-black/60 rounded-full px-2.5 py-1 flex items-center gap-1.5">
+                    <CheckCircle size={12} className="text-green-400" />
+                    <span className="text-white text-xs font-semibold">Full Tutorial · {formatTime(tutorialVideo.duration)}</span>
                   </div>
+                  <button onClick={() => setTutorialVideo(null)}
+                    className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/60 flex items-center justify-center">
+                    <Trash2 size={14} className="text-destructive" />
+                  </button>
                 </div>
                 <Button
-                  className="w-full font-bold glow-pink"
+                  className="w-full font-bold"
                   style={{ background: "linear-gradient(135deg, oklch(0.65 0.30 340), oklch(0.55 0.28 15))" }}
                   onClick={() => setStep("chapters")}
                 >
-                  Next: Add Chapter Markers
+                  Next: Add Chapter Steps
                 </Button>
               </div>
             )}
           </div>
         )}
 
-        {/* ── Step 4: Chapter marking ───────────────────────────────────── */}
+        {/* ── Step 4: Chapter marking ───────────────────────────────── */}
         {step === "chapters" && tutorialVideo && (
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">Watch your tutorial and tap <strong className="text-foreground">Mark Step</strong> at each key moment. Learners will use these to jump between steps.</p>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Play your tutorial and tap <span className="text-primary font-semibold">Capture Step</span> at each key moment. These become the navigation buttons in the practice player.
+            </p>
 
             {/* Video player */}
             <div className="relative w-full aspect-[9/16] rounded-2xl overflow-hidden bg-black">
@@ -405,59 +567,49 @@ export default function CreatorUpload() {
                 src={tutorialVideo.localUrl}
                 className="w-full h-full object-cover"
                 playsInline
-                onTimeUpdate={e => setCurrentTime(e.currentTarget.currentTime)}
-                onLoadedMetadata={e => setDuration(e.currentTarget.duration)}
-                onPlay={() => setIsPlaying(true)}
-                onPause={() => setIsPlaying(false)}
+                onTimeUpdate={e => setCurrentTime((e.target as HTMLVideoElement).currentTime)}
+                onLoadedMetadata={e => setDuration((e.target as HTMLVideoElement).duration)}
+                onEnded={() => setIsPlaying(false)}
               />
-              {/* Chapter markers on progress bar */}
-              <div className="absolute bottom-0 left-0 right-0 px-4 pb-4 bg-gradient-to-t from-black/80 to-transparent pt-8">
-                <div className="relative h-1.5 bg-white/20 rounded-full mb-3">
-                  <div
-                    className="absolute top-0 left-0 h-full rounded-full"
-                    style={{
-                      width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
-                      background: "linear-gradient(90deg, oklch(0.65 0.30 340), oklch(0.55 0.28 15))",
-                    }}
-                  />
-                  {chapters.map(ch => (
-                    <button
-                      key={ch.id}
-                      onClick={() => jumpToChapter(ch.timestampSeconds)}
-                      className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-primary border-2 border-white -translate-x-1/2"
-                      style={{ left: `${duration > 0 ? (ch.timestampSeconds / duration) * 100 : 0}%` }}
-                      title={ch.label}
-                    />
-                  ))}
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-white/60 text-xs font-mono">{formatTime(currentTime)}</span>
-                  <button
-                    onClick={togglePlay}
-                    className="w-10 h-10 rounded-full bg-primary/20 border border-primary flex items-center justify-center glow-pink"
-                  >
-                    {isPlaying ? <Pause size={16} className="text-white" /> : <Play size={16} className="text-white fill-white ml-0.5" />}
-                  </button>
-                  <span className="text-white/60 text-xs font-mono">{formatTime(duration)}</span>
-                </div>
+              {/* Play/pause overlay */}
+              <button
+                onClick={togglePlay}
+                className="absolute inset-0 flex items-center justify-center"
+              >
+                {!isPlaying && (
+                  <div className="w-16 h-16 rounded-full bg-black/50 flex items-center justify-center">
+                    <Play size={28} className="text-white ml-1" />
+                  </div>
+                )}
+              </button>
+              {/* Time */}
+              <div className="absolute bottom-3 left-3 bg-black/60 rounded-full px-2.5 py-1">
+                <span className="text-white text-xs font-mono">{formatTime(currentTime)} / {formatTime(duration)}</span>
               </div>
+              {/* Pause button when playing */}
+              {isPlaying && (
+                <button onClick={togglePlay} className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/50 flex items-center justify-center">
+                  <Pause size={16} className="text-white" />
+                </button>
+              )}
             </div>
 
-            {/* Mark step input */}
+            {/* Capture row */}
             <div className="flex gap-2">
               <Input
                 value={newChapterLabel}
                 onChange={e => setNewChapterLabel(e.target.value)}
-                placeholder={`Step ${chapters.length + 1} label...`}
+                placeholder={`Step ${chapters.length + 1} label (optional)`}
                 className="bg-card border-border flex-1"
-                onKeyDown={e => { if (e.key === "Enter") captureTimestamp(); }}
+                onKeyDown={e => e.key === "Enter" && captureTimestamp()}
               />
               <Button
                 onClick={captureTimestamp}
-                className="shrink-0 bg-secondary hover:bg-secondary/90 glow-red"
+                className="shrink-0 glow-pink"
+                style={{ background: "linear-gradient(135deg, oklch(0.65 0.30 340), oklch(0.55 0.28 15))" }}
               >
-                <Flag size={16} className="mr-1.5" />
-                Mark at {formatTime(Math.floor(currentTime))}
+                <Flag size={14} className="mr-1.5" />
+                Capture
               </Button>
             </div>
 
@@ -467,10 +619,12 @@ export default function CreatorUpload() {
                 {chapters.map((ch, i) => (
                   <div key={ch.id} className="flex items-center gap-3 px-4 py-3">
                     <div className="flex flex-col gap-0.5 shrink-0">
-                      <button onClick={() => moveChapter(ch.id, -1)} disabled={i === 0} className="text-muted-foreground hover:text-foreground disabled:opacity-20 transition-colors">
+                      <button onClick={() => moveChapter(ch.id, -1)} disabled={i === 0}
+                        className="text-muted-foreground hover:text-foreground disabled:opacity-20 transition-colors">
                         <ChevronUp size={12} />
                       </button>
-                      <button onClick={() => moveChapter(ch.id, 1)} disabled={i === chapters.length - 1} className="text-muted-foreground hover:text-foreground disabled:opacity-20 transition-colors">
+                      <button onClick={() => moveChapter(ch.id, 1)} disabled={i === chapters.length - 1}
+                        className="text-muted-foreground hover:text-foreground disabled:opacity-20 transition-colors">
                         <ChevronDown size={12} />
                       </button>
                     </div>
@@ -492,45 +646,60 @@ export default function CreatorUpload() {
             )}
 
             <Button
-              className="w-full font-bold glow-pink"
+              className="w-full font-bold"
               style={{ background: "linear-gradient(135deg, oklch(0.65 0.30 340), oklch(0.55 0.28 15))" }}
               onClick={() => setStep("preview")}
             >
-              {chapters.length === 0 ? "Skip chapters & Preview" : `Preview with ${chapters.length} step${chapters.length !== 1 ? "s" : ""}`}
+              {chapters.length === 0 ? "Skip Chapters & Preview" : `Preview with ${chapters.length} Step${chapters.length !== 1 ? "s" : ""}`}
             </Button>
           </div>
         )}
 
-        {/* ── Step 5: Preview & Publish ─────────────────────────────────── */}
+        {/* ── Step 5: Preview & Publish ─────────────────────────────── */}
         {step === "preview" && (
           <div className="space-y-4">
-            <div className="bg-card rounded-2xl border border-border overflow-hidden">
-              {demoVideo && (
-                <div className="relative w-full aspect-[9/16] bg-black">
-                  <video src={demoVideo.localUrl} className="w-full h-full object-cover" muted loop playsInline autoPlay />
-                  <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
-                    <h3 className="font-bold text-white text-lg">{title}</h3>
-                    <p className="text-white/60 text-sm">{category}</p>
-                  </div>
-                </div>
-              )}
-              <div className="p-4 space-y-3">
-                {description && <p className="text-sm text-muted-foreground">{description}</p>}
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Token price</span>
-                  <span className="font-black text-primary text-lg">{tokenPrice} token{tokenPrice !== 1 ? "s" : ""}</span>
-                </div>
-                {chapters.length > 0 && (
-                  <div className="space-y-1.5">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{chapters.length} Steps</p>
-                    {chapters.map((ch, i) => (
-                      <div key={ch.id} className="flex items-center gap-2 text-sm">
-                        <span className="text-muted-foreground font-mono text-xs w-10 shrink-0">{formatTime(ch.timestampSeconds)}</span>
-                        <span className="text-foreground">{ch.label}</span>
-                      </div>
-                    ))}
+            <p className="text-sm text-muted-foreground">Review your tutorial before publishing to the feed.</p>
+
+            {/* Summary card */}
+            <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
+              <div className="flex items-start gap-3">
+                {demoVideo && (
+                  <div className="w-16 h-24 rounded-xl overflow-hidden bg-black shrink-0">
+                    <video src={demoVideo.localUrl} className="w-full h-full object-cover" muted loop playsInline autoPlay />
                   </div>
                 )}
+                <div className="flex-1 min-w-0">
+                  <p className="font-black text-foreground text-base leading-tight">{title}</p>
+                  <p className="text-muted-foreground text-xs mt-1">{category}</p>
+                  {description && <p className="text-muted-foreground text-xs mt-1 line-clamp-2">{description}</p>}
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="bg-primary/10 text-primary text-xs font-bold px-2 py-0.5 rounded-full">
+                      {tokenPrice} token{tokenPrice !== 1 ? "s" : ""}
+                    </span>
+                    {chapters.length > 0 && (
+                      <span className="bg-muted text-muted-foreground text-xs px-2 py-0.5 rounded-full">
+                        {chapters.length} steps
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border">
+                <div className="flex items-center gap-2">
+                  <Clapperboard size={14} className="text-primary" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">Demo</p>
+                    <p className="text-xs font-semibold text-foreground">{demoVideo ? formatTime(demoVideo.duration) : "—"}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Film size={14} className="text-secondary" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">Tutorial</p>
+                    <p className="text-xs font-semibold text-foreground">{tutorialVideo ? formatTime(tutorialVideo.duration) : "—"}</p>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -540,8 +709,7 @@ export default function CreatorUpload() {
               disabled={publishMutation.isPending}
               onClick={handlePublish}
             >
-              {publishMutation.isPending ? <Loader2 size={18} className="animate-spin mr-2" /> : <CheckCircle size={18} className="mr-2" />}
-              Publish Tutorial
+              {publishMutation.isPending ? <><Loader2 size={16} className="mr-2 animate-spin" />Publishing…</> : "Publish Tutorial"}
             </Button>
           </div>
         )}
