@@ -75,7 +75,8 @@ async function uploadVideoDirect(
   await new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", s3Url);
-    xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
+    // Do NOT set Content-Type — the presigned URL is signed with host-only headers.
+    // Adding Content-Type causes a SignatureDoesNotMatch error from S3.
 
     xhr.upload.addEventListener("progress", (e) => {
       if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
