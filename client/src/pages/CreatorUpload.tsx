@@ -411,16 +411,19 @@ export default function CreatorUpload() {
             {!demoVideo && !uploading && (
               <button
                 onClick={() => demoInputRef.current?.click()}
-                className="w-full rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-2 bg-card hover:border-primary/50 transition-colors px-6 py-8"
+                className="w-full rounded-2xl border-2 border-dashed border-border flex flex-col bg-card hover:border-primary/50 transition-colors px-6 pt-10 pb-8"
+                style={{ minHeight: '60vh' }}
               >
-                <Clapperboard size={28} className="text-primary" />
-                <span className="text-sm text-foreground font-semibold">Tap to select demo clip</span>
-                <p className="text-xs text-muted-foreground text-center leading-relaxed max-w-xs">
-                  A demo is a quick 30-second preview of the skill you are teaching. It is what shows up on the discovery feed and what people see when you share a link.
+                {/* Top: icon + label */}
+                <div className="flex flex-col items-center gap-2 flex-1 justify-center">
+                  <Upload size={32} className="text-muted-foreground" />
+                  <span className="text-sm text-foreground font-semibold">Tap to select demo clip</span>
+                  <span className="text-xs text-muted-foreground">MP4 · Max 200MB</span>
+                </div>
+                {/* Bottom: description in neon pink */}
+                <p className="text-sm font-semibold text-center leading-snug" style={{ color: 'oklch(0.65 0.30 340)' }}>
+                  Upload a short preview clip (15–30 seconds) that shows the skill. This is what learners see in the feed.
                 </p>
-                <span className="mt-1 flex items-center gap-1.5 text-xs text-primary font-semibold">
-                  <Info size={11} /> Max 30 seconds · MP4 recommended
-                </span>
               </button>
             )}
 
@@ -484,16 +487,19 @@ export default function CreatorUpload() {
             {!tutorialVideo && !uploading && (
               <button
                 onClick={() => tutorialInputRef.current?.click()}
-                className="w-full rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-2 bg-card hover:border-secondary/50 transition-colors px-6 py-8"
+                className="w-full rounded-2xl border-2 border-dashed border-border flex flex-col bg-card hover:border-primary/50 transition-colors px-6 pt-10 pb-8"
+                style={{ minHeight: '60vh' }}
               >
-                <Film size={28} className="text-secondary" />
-                <span className="text-sm text-foreground font-semibold">Tap to select full tutorial</span>
-                <p className="text-xs text-muted-foreground text-center leading-relaxed max-w-xs">
-                  A tutorial is the full teaching video. The max length is 5 minutes. You will have the ability to add chapter breaks to it in the next step.
+                {/* Top: icon + label */}
+                <div className="flex flex-col items-center gap-2 flex-1 justify-center">
+                  <Upload size={32} className="text-muted-foreground" />
+                  <span className="text-sm text-foreground font-semibold">Tap to select full tutorial</span>
+                  <span className="text-xs text-muted-foreground">MP4 · Max 200MB</span>
+                </div>
+                {/* Bottom: description in neon pink */}
+                <p className="text-sm font-semibold text-center leading-snug" style={{ color: 'oklch(0.65 0.30 340)' }}>
+                  Upload the full step-by-step teaching video. Max 5 minutes. You will add chapter breaks in the next step.
                 </p>
-                <span className="mt-1 flex items-center gap-1.5 text-xs text-secondary font-semibold">
-                  <Info size={11} /> Max 5 minutes · MP4 recommended
-                </span>
               </button>
             )}
 
