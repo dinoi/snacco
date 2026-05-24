@@ -32,9 +32,17 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
-  // Configure body parser with larger size limit for file uploads
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  // Apply JSON/urlencoded body parsers to all routes EXCEPT the multipart upload endpoint.
+  // The upload route is handled by multer which has its own 350MB limit.
+  // If express.json runs first on multipart requests it rejects them at 50MB (413).
+  app.use((req, res, next) => {
+    if (req.path === "/api/upload-video") return next();
+    express.json({ limit: "50mb" })(req, res, next);
+  });
+  app.use((req, res, next) => {
+    if (req.path === "/api/upload-video") return next();
+    express.urlencoded({ limit: "50mb", extended: true })(req, res, next);
+  });
   registerStorageProxy(app);
   registerOAuthRoutes(app);
   registerUploadRoute(app);
