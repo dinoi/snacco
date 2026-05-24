@@ -405,32 +405,22 @@ export default function CreatorUpload() {
         {/* ── Step 2: Demo clip ─────────────────────────────────────── */}
         {step === "demo" && (
           <div className="space-y-4">
-            {/* What is a demo clip */}
-            <div className="bg-card border border-border rounded-2xl p-4 flex gap-3">
-              <Clapperboard size={20} className="text-primary shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-bold text-foreground">What is a Demo Clip?</p>
-                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                  A demo is a quick 30-second preview of the skill you are teaching. It is what shows up on the discovery feed and what people see when you share a link.
-                </p>
-                <div className="mt-2 flex items-center gap-1.5 text-xs text-primary font-semibold">
-                  <Info size={12} />
-                  Max 30 seconds · MP4 recommended
-                </div>
-              </div>
-            </div>
-
             <input ref={demoInputRef} type="file" accept="video/mp4,video/*" className="hidden"
               onChange={e => { const f = e.target.files?.[0]; if (f) handleVideoSelect(f, "demo"); e.target.value = ""; }} />
 
             {!demoVideo && !uploading && (
               <button
                 onClick={() => demoInputRef.current?.click()}
-                className="w-full h-36 rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-2 bg-card hover:border-primary/50 transition-colors"
+                className="w-full rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-2 bg-card hover:border-primary/50 transition-colors px-6 py-8"
               >
-                <Upload size={28} className="text-muted-foreground" />
-                <span className="text-sm text-muted-foreground font-medium">Tap to select demo clip</span>
-                <span className="text-xs text-muted-foreground">MP4 · Max 30 seconds</span>
+                <Clapperboard size={28} className="text-primary" />
+                <span className="text-sm text-foreground font-semibold">Tap to select demo clip</span>
+                <p className="text-xs text-muted-foreground text-center leading-relaxed max-w-xs">
+                  A demo is a quick 30-second preview of the skill you are teaching. It is what shows up on the discovery feed and what people see when you share a link.
+                </p>
+                <span className="mt-1 flex items-center gap-1.5 text-xs text-primary font-semibold">
+                  <Info size={11} /> Max 30 seconds · MP4 recommended
+                </span>
               </button>
             )}
 
@@ -488,32 +478,22 @@ export default function CreatorUpload() {
               </div>
             )}
 
-            {/* What is a full tutorial */}
-            <div className="bg-card border border-border rounded-2xl p-4 flex gap-3">
-              <Film size={20} className="text-secondary shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-bold text-foreground">What is the Full Tutorial?</p>
-                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                  A tutorial is the full teaching video. The max length is 5 minutes. You will have the ability to add chapter breaks to it in the next step.
-                </p>
-                <div className="mt-2 flex items-center gap-1.5 text-xs text-secondary font-semibold">
-                  <Info size={12} />
-                  Max 5 minutes · MP4 recommended
-                </div>
-              </div>
-            </div>
-
             <input ref={tutorialInputRef} type="file" accept="video/mp4,video/*" className="hidden"
               onChange={e => { const f = e.target.files?.[0]; if (f) handleVideoSelect(f, "tutorial"); e.target.value = ""; }} />
 
             {!tutorialVideo && !uploading && (
               <button
                 onClick={() => tutorialInputRef.current?.click()}
-                className="w-full h-36 rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-2 bg-card hover:border-secondary/50 transition-colors"
+                className="w-full rounded-2xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-2 bg-card hover:border-secondary/50 transition-colors px-6 py-8"
               >
-                <Upload size={28} className="text-muted-foreground" />
-                <span className="text-sm text-muted-foreground font-medium">Tap to select full tutorial</span>
-                <span className="text-xs text-muted-foreground">MP4 · Max 5 minutes</span>
+                <Film size={28} className="text-secondary" />
+                <span className="text-sm text-foreground font-semibold">Tap to select full tutorial</span>
+                <p className="text-xs text-muted-foreground text-center leading-relaxed max-w-xs">
+                  A tutorial is the full teaching video. The max length is 5 minutes. You will have the ability to add chapter breaks to it in the next step.
+                </p>
+                <span className="mt-1 flex items-center gap-1.5 text-xs text-secondary font-semibold">
+                  <Info size={11} /> Max 5 minutes · MP4 recommended
+                </span>
               </button>
             )}
 
