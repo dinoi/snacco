@@ -411,7 +411,7 @@ export default function CreatorUpload() {
               <div>
                 <p className="text-sm font-bold text-foreground">What is a Demo Clip?</p>
                 <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                  A short, punchy preview that shows the finished skill in action — no explanation, just the move. This is what learners scroll past in the feed and decide whether to buy. Think of it as your hook.
+                  A demo is a quick 30-second preview of the skill you are teaching. It is what shows up on the discovery feed and what people see when you share a link.
                 </p>
                 <div className="mt-2 flex items-center gap-1.5 text-xs text-primary font-semibold">
                   <Info size={12} />
@@ -494,7 +494,7 @@ export default function CreatorUpload() {
               <div>
                 <p className="text-sm font-bold text-foreground">What is the Full Tutorial?</p>
                 <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                  The step-by-step teaching video that learners unlock with their tokens. Break the skill down clearly — slow it down, explain each part, repeat key moments. This is what they'll practice with using the Snacco player.
+                  A tutorial is the full teaching video. The max length is 5 minutes. You will have the ability to add chapter breaks to it in the next step.
                 </p>
                 <div className="mt-2 flex items-center gap-1.5 text-xs text-secondary font-semibold">
                   <Info size={12} />
