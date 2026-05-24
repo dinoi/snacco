@@ -67,6 +67,7 @@ function uploadVideoXHR(
 
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/upload-video");
+    xhr.withCredentials = true; // send session cookie with the request
 
     xhr.upload.addEventListener("progress", (e) => {
       if (e.lengthComputable) {
@@ -81,6 +82,8 @@ function uploadVideoXHR(
         } catch {
           reject(new Error("Invalid server response"));
         }
+      } else if (xhr.status === 401) {
+        reject(new Error("Session expired — please sign out and sign back in, then try again."));
       } else {
         let msg = `Upload failed (${xhr.status})`;
         try { msg = JSON.parse(xhr.responseText)?.error ?? msg; } catch {}
@@ -130,6 +133,7 @@ export default function CreatorUpload() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadingType, setUploadingType] = useState<"demo" | "tutorial" | null>(null);
   const [pendingLocalUrl, setPendingLocalUrl] = useState<string | null>(null); // thumbnail shown during upload
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   // Player state (chapter marking step)
   const [isPlaying, setIsPlaying] = useState(false);
@@ -187,6 +191,7 @@ export default function CreatorUpload() {
     setUploading(true);
     setUploadProgress(0);
     setUploadingType(type);
+    setUploadError(null); // clear any previous error
 
     try {
       const result = await uploadVideoXHR(file, type, setUploadProgress);
@@ -209,7 +214,7 @@ export default function CreatorUpload() {
     } catch (err: any) {
       URL.revokeObjectURL(localUrl);
       setPendingLocalUrl(null);
-      toast.error(err?.message ?? "Upload failed. Please try again.");
+      setUploadError(err?.message ?? "Upload failed. Please try again.");
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -451,6 +456,20 @@ export default function CreatorUpload() {
               </div>
             )}
 
+            {/* Inline upload error — shown when upload fails so user cannot miss it */}
+            {uploadError && !uploading && !demoVideo && uploadingType !== "tutorial" && (
+              <div className="rounded-2xl border-2 border-destructive/60 bg-destructive/10 px-5 py-4 space-y-3">
+                <p className="text-destructive font-bold text-sm">Upload failed</p>
+                <p className="text-destructive/80 text-sm leading-snug">{uploadError}</p>
+                <button
+                  onClick={() => { setUploadError(null); demoInputRef.current?.click(); }}
+                  className="w-full py-2.5 rounded-xl text-sm font-bold border border-destructive/60 text-destructive hover:bg-destructive/10 transition-colors"
+                >
+                  Try again
+                </button>
+              </div>
+            )}
+
             {/* Uploaded state — shown briefly before auto-advance, or if user navigates back */}
             {demoVideo && !uploading && (
               <div className="space-y-3">
@@ -532,6 +551,20 @@ export default function CreatorUpload() {
                       style={{ width: `${uploadProgress}%`, background: "linear-gradient(90deg, oklch(0.65 0.30 340), oklch(0.55 0.28 15))" }} />
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* Inline upload error for tutorial step */}
+            {uploadError && !uploading && !tutorialVideo && uploadingType !== "demo" && (
+              <div className="rounded-2xl border-2 border-destructive/60 bg-destructive/10 px-5 py-4 space-y-3">
+                <p className="text-destructive font-bold text-sm">Upload failed</p>
+                <p className="text-destructive/80 text-sm leading-snug">{uploadError}</p>
+                <button
+                  onClick={() => { setUploadError(null); tutorialInputRef.current?.click(); }}
+                  className="w-full py-2.5 rounded-xl text-sm font-bold border border-destructive/60 text-destructive hover:bg-destructive/10 transition-colors"
+                >
+                  Try again
+                </button>
               </div>
             )}
 
