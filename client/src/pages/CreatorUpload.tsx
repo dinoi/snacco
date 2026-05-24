@@ -197,9 +197,15 @@ export default function CreatorUpload() {
         duration: dur,
         fileName: file.name,
       };
-      if (type === "demo") setDemoVideo(uploaded);
-      else setTutorialVideo(uploaded);
-      toast.success(`${type === "demo" ? "Demo clip" : "Tutorial video"} uploaded!`);
+      if (type === "demo") {
+        setDemoVideo(uploaded);
+        setStep("tutorial");
+        toast.success("Demo clip uploaded! Now upload your full tutorial.");
+      } else {
+        setTutorialVideo(uploaded);
+        setStep("chapters");
+        toast.success("Tutorial uploaded! Now add chapter steps.");
+      }
     } catch (err: any) {
       URL.revokeObjectURL(localUrl);
       setPendingLocalUrl(null);
@@ -445,7 +451,7 @@ export default function CreatorUpload() {
               </div>
             )}
 
-            {/* Uploaded state */}
+            {/* Uploaded state — shown briefly before auto-advance, or if user navigates back */}
             {demoVideo && !uploading && (
               <div className="space-y-3">
                 <div className="relative w-full h-48 rounded-2xl overflow-hidden bg-black">
