@@ -3,12 +3,12 @@ import express from "express";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { registerOAuthRoutes } from "./oauth";
-import { registerStorageProxy } from "./storageProxy";
+import { registerGitHubOAuthRoutes } from "./github-oauth";
 import { appRouter } from "../routers";
-import { createContext } from "./context";
+import { createContext } from "./context-github";
 import { serveStatic, setupVite } from "./vite";
-import { registerUploadRoute } from "../uploadRoute";
+import { registerUploadRoute } from "../uploadRoute-railway";
+import { ENV } from "./env";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -43,8 +43,7 @@ async function startServer() {
     if (req.path === "/api/upload-video") return next();
     express.urlencoded({ limit: "50mb", extended: true })(req, res, next);
   });
-  registerStorageProxy(app);
-  registerOAuthRoutes(app);
+  registerGitHubOAuthRoutes(app);
   registerUploadRoute(app);
   // tRPC API
   app.use(

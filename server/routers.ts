@@ -2,33 +2,12 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import fs from "fs";
 import path from "path";
-import { COOKIE_NAME } from "@shared/const";
-import { getSessionCookieOptions } from "./_core/cookies";
+const COOKIE_NAME = "session_token";
+
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
-import {
-  adjustTokens,
-  getAllTutorials,
-  getAllUsers,
-  getChaptersByTutorial,
-  getPublishedTutorials,
-  getTotalTokensConsumed,
-  getTotalUnlocks,
-  getTotalUsers,
-  getTokenHistory,
-  getTutorialById,
-  getTutorialsByCreator,
-  getUnlockedTutorials,
-  getUserById,
-  isUnlocked,
-  setCreatorMode,
-  setTutorialPublished,
-  unlockTutorial,
-  createTutorial,
-  createChapters,
-  deleteChaptersByTutorial,
-} from "./db";
-import { storagePut } from "./storage";
+import * as db from "./db-postgres";
+import * as storage from "./railway-storage";
 
 // ─── In-memory chunk registry ─────────────────────────────────────────────────
 // Tracks which chunks have been received for each upload session.
@@ -70,14 +49,14 @@ export const appRouter = router({
     }),
 
     getHistory: protectedProcedure.query(async ({ ctx }) => {
-      return getTokenHistory(ctx.user.id);
+      return db.getTokenHistory(ctx.user.id);
     }),
 
     // Admin: adjust tokens for any user
     adminAdjust: adminProcedure
       .input(z.object({ userId: z.number(), amount: z.number(), reason: z.string().min(1) }))
       .mutation(async ({ ctx, input }) => {
-        await adjustTokens(input.userId, input.amount, input.reason, ctx.user.id);
+        await db.adjustTokens(input.userId, input.amount, input.reason, ctx.user.id);
         return { success: true };
       }),
 
@@ -93,19 +72,19 @@ export const appRouter = router({
     setCreatorMode: protectedProcedure
       .input(z.object({ isCreator: z.boolean() }))
       .mutation(async ({ ctx, input }) => {
-        await setCreatorMode(ctx.user.id, input.isCreator);
+        await db.setCreatorMode(ctx.user.id, input.isCreator);
         return { success: true };
       }),
 
     // Admin
     adminList: adminProcedure.query(async () => {
-      return getAllUsers();
+      return db.db.getPublishedTutorials();
     }),
 
     adminGetTokenHistory: adminProcedure
       .input(z.object({ userId: z.number() }))
       .query(async ({ input }) => {
-        return getTokenHistory(input.userId);
+        return db.getTokenHistory(input.userId);
       }),
   }),
 
@@ -113,14 +92,14 @@ export const appRouter = router({
   tutorials: router({
     // Public feed
     feed: publicProcedure.query(async () => {
-      return getPublishedTutorials();
+      return db.getPublishedTutorials();
     }),
 
     // Single tutorial detail
     get: publicProcedure
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => {
-        const tutorial = await getTutorialById(input.id);
+        const tutorial = await db.getTutorialById(input.id);
         if (!tutorial) throw new TRPCError({ code: "NOT_FOUND" });
         return tutorial;
       }),
@@ -129,14 +108,14 @@ export const appRouter = router({
     getChapters: publicProcedure
       .input(z.object({ tutorialId: z.number() }))
       .query(async ({ input }) => {
-        return getChaptersByTutorial(input.tutorialId);
+        return db.getChaptersByTutorial(input.tutorialId);
       }),
 
     // Check if current user has unlocked a tutorial
     isUnlocked: protectedProcedure
       .input(z.object({ tutorialId: z.number() }))
       .query(async ({ ctx, input }) => {
-        const unlocked = await isUnlocked(ctx.user.id, input.tutorialId);
+        const unlocked = await db.isUserTutorialUnlocked(ctx.user.id, input.tutorialId);
         return { unlocked };
       }),
 
@@ -144,10 +123,10 @@ export const appRouter = router({
     unlock: protectedProcedure
       .input(z.object({ tutorialId: z.number() }))
       .mutation(async ({ ctx, input }) => {
-        const already = await isUnlocked(ctx.user.id, input.tutorialId);
+        const already = await db.isUserTutorialUnlocked(ctx.user.id, input.tutorialId);
         if (already) return { success: true, alreadyOwned: true };
 
-        const tutorial = await getTutorialById(input.tutorialId);
+        const tutorial = await db.getTutorialById(input.tutorialId);
         if (!tutorial || !tutorial.isPublished) throw new TRPCError({ code: "NOT_FOUND" });
 
         const user = await getUserById(ctx.user.id);
@@ -156,19 +135,19 @@ export const appRouter = router({
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Insufficient tokens" });
         }
 
-        await adjustTokens(ctx.user.id, -tutorial.tokenPrice, `Unlocked tutorial: ${tutorial.title}`);
-        await unlockTutorial(ctx.user.id, input.tutorialId, tutorial.tokenPrice);
+        await db.adjustTokens(ctx.user.id, -tutorial.tokenPrice, `Unlocked tutorial: ${tutorial.title}`);
+        await db.unlockTutorial(ctx.user.id, input.tutorialId, tutorial.tokenPrice);
         return { success: true, alreadyOwned: false };
       }),
 
     // Library: all unlocked tutorials for current user
     library: protectedProcedure.query(async ({ ctx }) => {
-      return getUnlockedTutorials(ctx.user.id);
+      return db.getUnlockedTutorials(ctx.user.id);
     }),
 
     // Creator: get my tutorials
     myTutorials: protectedProcedure.query(async ({ ctx }) => {
-      return getTutorialsByCreator(ctx.user.id);
+      return db.getTutorialsByCreator(ctx.user.id);
     }),
 
     // ── Chunked upload: receive one chunk at a time ──────────────────
@@ -222,7 +201,7 @@ export const appRouter = router({
           const inputKey = `videos/${ctx.user.id}/${input.type}/${Date.now()}_${safeName}`;
 
           // storagePut appends its own hash suffix and returns the real { key, url }
-          const { key: storedKey, url } = await storagePut(inputKey, fullBuffer, input.mimeType || "video/mp4");
+          const { key: storedKey, url } = await storage.storagePut(inputKey, fullBuffer, input.mimeType || "video/mp4");
 
           // Clean up temp files
           try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
@@ -290,11 +269,11 @@ export const appRouter = router({
         if (!user?.isCreator) throw new TRPCError({ code: "FORBIDDEN", message: "Enable creator mode first" });
 
         const { chapters: chapterData, ...tutorialData } = input;
-        const result = await createTutorial({ ...tutorialData, creatorId: ctx.user.id });
+        const result = await db.createTutorial({ ...tutorialData, creatorId: ctx.user.id });
         if (!result?.id) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
 
         if (chapterData.length > 0) {
-          await createChapters(chapterData.map(c => ({ ...c, tutorialId: result.id })));
+          await db.createChapter(chapterData.map(c => ({ ...c, tutorialId: result.id })));
         }
 
         return { success: true, tutorialId: result.id };
