@@ -477,7 +477,7 @@ export default function CreatorUpload() {
                   <span className="text-xs text-muted-foreground">MP4 · Max 5 minutes</span>
                 </div>
                 <p className="text-sm font-semibold text-center leading-snug" style={{ color: 'oklch(0.65 0.30 340)' }}>
-                  A tutorial is the full tutorial video. The max length is 5 minutes. You will have the ability to add chapter breaks to it later.
+                  A tutorial is the full video. The max length is 5 minutes. You will have the ability to add chapter breaks to it later.
                 </p>
               </button>
             )}
