@@ -19,6 +19,7 @@ import { toast } from "sonner";
 
 const DEMO_MAX_SECONDS = 30;
 const TUTORIAL_MAX_SECONDS = 300;
+const CHUNK_SIZE = 20 * 1024 * 1024; // 20 MB per chunk — well under 32 MB gateway limit
 
 const CATEGORIES = [
   "Dance", "Fitness", "Yoga", "Martial Arts", "Music",
@@ -132,61 +133,76 @@ export default function CreatorUpload() {
     );
   }
 
-  // ── Direct multipart upload ─────────────────────────────────────────
-  // POST FormData directly to /api/upload-video (multer handles streaming).
-  // Bypasses tRPC/base64 limitations and gateway size restrictions.
-  const uploadVideoDirect = async (
+  // ── Chunked binary upload ─────────────────────────────────────────────
+  // Splits file into CHUNK_SIZE chunks, sends each as raw binary via multipart.
+  // Bypasses base64 overhead and gateway size limits (20MB chunks < 32MB gateway).
+  const uploadVideoChunked = async (
     file: File,
     type: "demo" | "tutorial",
     onProgress: (pct: number) => void
   ): Promise<{ key: string; url: string }> => {
-    const formData = new FormData();
-    formData.append("video", file);
-    formData.append("type", type);
+    const uploadId = nanoid();
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    let lastResult: any = null;
 
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, file.size);
+      const chunkBlob = file.slice(start, end);
 
-      xhr.upload.addEventListener("progress", (e) => {
-        if (e.lengthComputable) {
-          const pct = Math.round((e.loaded / e.total) * 100);
-          onProgress(pct);
-        }
-      });
+      const formData = new FormData();
+      formData.append("chunk", chunkBlob);
+      formData.append("uploadId", uploadId);
+      formData.append("chunkIndex", String(i));
+      formData.append("totalChunks", String(totalChunks));
+      formData.append("fileName", file.name);
+      formData.append("mimeType", file.type || "video/mp4");
+      formData.append("type", type);
 
-      xhr.addEventListener("load", () => {
-        if (xhr.status === 200) {
-          try {
-            const result = JSON.parse(xhr.responseText);
-            if (result.key && result.url) {
-              resolve({ key: result.key, url: result.url });
+      try {
+        lastResult = await new Promise<any>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+
+          xhr.addEventListener("load", () => {
+            if (xhr.status === 200) {
+              try {
+                resolve(JSON.parse(xhr.responseText));
+              } catch (e) {
+                reject(new Error("Failed to parse server response"));
+              }
             } else {
-              reject(new Error(result.error || "Invalid response from server"));
+              try {
+                const error = JSON.parse(xhr.responseText);
+                reject(new Error(error.error || `Chunk upload failed (${xhr.status})`));
+              } catch {
+                reject(new Error(`Chunk upload failed (${xhr.status})`));
+              }
             }
-          } catch (e) {
-            reject(new Error("Failed to parse server response"));
-          }
-        } else {
-          try {
-            const error = JSON.parse(xhr.responseText);
-            reject(new Error(error.error || `Upload failed (${xhr.status})`));
-          } catch {
-            reject(new Error(`Upload failed (${xhr.status})`));
-          }
-        }
-      });
+          });
 
-      xhr.addEventListener("error", () => {
-        reject(new Error("Network error during upload"));
-      });
+          xhr.addEventListener("error", () => {
+            reject(new Error("Network error during chunk upload"));
+          });
 
-      xhr.addEventListener("abort", () => {
-        reject(new Error("Upload cancelled"));
-      });
+          xhr.addEventListener("abort", () => {
+            reject(new Error("Chunk upload cancelled"));
+          });
 
-      xhr.open("POST", "/api/upload-video");
-      xhr.send(formData);
-    });
+          xhr.open("POST", "/api/upload-chunk");
+          xhr.send(formData);
+        });
+      } catch (sendErr: any) {
+        throw new Error(`Failed to send chunk ${i + 1}/${totalChunks}: ${sendErr?.message ?? sendErr}`);
+      }
+
+      onProgress(Math.round(((i + 1) / totalChunks) * 100));
+    }
+
+    if (!lastResult?.done || !lastResult?.url) {
+      throw new Error("Upload did not complete — please try again.");
+    }
+
+    return { key: lastResult.key, url: lastResult.url };
   };
 
   // ── Video file handler ─────────────────────────────────────────────
@@ -222,7 +238,7 @@ export default function CreatorUpload() {
     generateThumbnail(file).then((dataUrl) => setThumbnailDataUrl(dataUrl));
 
     try {
-      const result = await uploadVideoDirect(file, type, setUploadProgress);
+      const result = await uploadVideoChunked(file, type, setUploadProgress);
       const uploaded: UploadedVideo = {
         url: result.url,
         key: result.key,
