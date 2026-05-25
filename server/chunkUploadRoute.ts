@@ -68,7 +68,13 @@ export function registerChunkUploadRoute(app: Express) {
 
         // Move chunk from temp location to chunk dir
         const targetPath = chunkPath(dir, chunkIndex);
-        fs.renameSync(tmpPath, targetPath);
+        if (!tmpPath) throw new Error(`No temp file for chunk ${chunkIndex}`);
+        if (!fs.existsSync(tmpPath)) throw new Error(`Temp file not found at ${tmpPath}`);
+        try {
+          fs.renameSync(tmpPath, targetPath);
+        } catch (renameErr: any) {
+          throw new Error(`Failed to move chunk ${chunkIndex} from ${tmpPath} to ${targetPath}: ${renameErr?.message}`);
+        }
 
         // Track received chunks
         let entry = chunkRegistry.get(uploadId);
@@ -88,9 +94,14 @@ export function registerChunkUploadRoute(app: Express) {
         try {
           const parts: Buffer[] = [];
           for (let i = 0; i < totalChunks; i++) {
-            parts.push(fs.readFileSync(chunkPath(dir, i)));
+            const chunkFile = chunkPath(dir, i);
+            if (!fs.existsSync(chunkFile)) {
+              throw new Error(`Chunk ${i} not found at ${chunkFile}`);
+            }
+            parts.push(fs.readFileSync(chunkFile));
           }
           const fullBuffer = Buffer.concat(parts);
+          console.log(`[ChunkUpload] Reassembled ${totalChunks} chunks (${fullBuffer.length} bytes) for uploadId ${uploadId}`);
 
           // Upload to S3 via server-side Forge API
           const { forgeUrl, forgeKey } = getForgeConfig();
