@@ -76,21 +76,29 @@ function generateThumbnail(file: File): Promise<string | null> {
   });
 }
 
-// ── Upload via same-origin /api/upload-video (no CORS, disk-buffered on server) ──
-// Uses XHR so we get upload progress events.
-function uploadVideoViaServer(
+// ── Two-step upload: get presigned S3 URL from server, then PUT directly to S3 ──
+// Step 1: tRPC call to get a presigned PUT URL (tiny JSON, no gateway size issue)
+// Step 2: XHR PUT directly to S3 with NO extra headers (host-only signature)
+// This bypasses the platform gateway size limit entirely.
+async function uploadVideoDirect(
   file: File,
   type: "demo" | "tutorial",
+  getPresignUrl: (input: { fileName: string; mimeType: string; type: "demo" | "tutorial" }) => Promise<{ key: string; s3Url: string; storageUrl: string }>,
   onProgress: (pct: number) => void
 ): Promise<{ key: string; url: string }> {
-  return new Promise((resolve, reject) => {
-    const formData = new FormData();
-    formData.append("video", file);
-    formData.append("type", type);
+  // Step 1: get presigned URL from our server
+  const { key, s3Url, storageUrl } = await getPresignUrl({
+    fileName: file.name,
+    mimeType: file.type || "video/mp4",
+    type,
+  });
 
+  // Step 2: PUT file bytes directly to S3 — NO Content-Type, NO extra headers
+  // The presigned URL is signed with host-only; any extra header breaks the signature
+  return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/api/upload-video");
-    xhr.withCredentials = true; // send session cookie
+    xhr.open("PUT", s3Url);
+    // Do NOT set any headers — the presigned URL signature covers host only
 
     xhr.upload.addEventListener("progress", (e) => {
       if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
@@ -98,22 +106,16 @@ function uploadVideoViaServer(
 
     xhr.addEventListener("load", () => {
       if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          const data = JSON.parse(xhr.responseText);
-          resolve({ key: data.key, url: data.url });
-        } catch {
-          reject(new Error("Invalid response from server"));
-        }
+        resolve({ key, url: storageUrl });
       } else {
-        let msg = `Upload failed (${xhr.status})`;
-        try { msg = JSON.parse(xhr.responseText)?.error ?? msg; } catch { /* ignore */ }
-        reject(new Error(msg));
+        reject(new Error(`Upload failed (${xhr.status}): ${xhr.responseText.slice(0, 200)}`));
       }
     });
 
-    xhr.addEventListener("error", () => reject(new Error("Network error during upload")));
+    xhr.addEventListener("error", () => reject(new Error("Network error during upload — check your connection and try again")));
     xhr.addEventListener("abort", () => reject(new Error("Upload cancelled")));
-    xhr.send(formData);
+    // Send raw file bytes — no FormData wrapper
+    xhr.send(file);
   });
 }
 
@@ -147,6 +149,8 @@ export default function CreatorUpload() {
   const tutorialVideoRef = useRef<HTMLVideoElement>(null);
   const demoInputRef = useRef<HTMLInputElement>(null);
   const tutorialInputRef = useRef<HTMLInputElement>(null);
+
+  const presignMutation = trpc.tutorials.presignUpload.useMutation();
 
   const publishMutation = trpc.tutorials.publish.useMutation({
     onSuccess: () => {
@@ -199,7 +203,7 @@ export default function CreatorUpload() {
     generateThumbnail(file).then((dataUrl) => setThumbnailDataUrl(dataUrl));
 
     try {
-      const result = await uploadVideoViaServer(file, type, setUploadProgress);
+      const result = await uploadVideoDirect(file, type, presignMutation.mutateAsync, setUploadProgress);
       const uploaded: UploadedVideo = {
         url: result.url,
         key: result.key,
