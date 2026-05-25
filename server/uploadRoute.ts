@@ -1,11 +1,13 @@
 import type { Express } from "express";
 import multer from "multer";
 import fs from "fs";
+import path from "path";
 import os from "os";
+import { ENV } from "./_core/env";
 import { sdk } from "./_core/sdk";
-import { storagePut } from "./storage";
 
-// Disk storage: stream directly to /tmp as it arrives — no RAM buffering.
+// Use disk storage so large video files are written to /tmp as they stream in.
+// This avoids buffering the entire file in RAM and bypasses the gateway body limit.
 const upload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, os.tmpdir()),
@@ -47,18 +49,36 @@ export function registerUploadRoute(app: Express) {
         }
 
         // Read from disk and upload to S3 via server-side storagePut
-        // storagePut uses the internal Forge API — no CORS, no presign needed.
-        const fileBuffer = fs.readFileSync(tmpPath);
+        // (server-side fetch has no CORS restrictions)
+        const { forgeUrl, forgeKey } = getForgeConfig();
         const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
-        const inputKey = `videos/${user.id}/${type}/${Date.now()}_${safeName}`;
+        const key = `videos/${user.id}/${type}/${Date.now()}_${safeName}`;
 
-        const { key: storedKey, url } = await storagePut(
-          inputKey,
-          fileBuffer,
-          file.mimetype || "video/mp4"
-        );
+        // Get presigned PUT URL from Forge using server-side key
+        const presignUrl = new URL("v1/storage/presign/put", forgeUrl + "/");
+        presignUrl.searchParams.set("path", key);
+        const presignResp = await fetch(presignUrl.toString(), {
+          headers: { Authorization: `Bearer ${forgeKey}` },
+        });
+        if (!presignResp.ok) {
+          const msg = await presignResp.text().catch(() => presignResp.statusText);
+          throw new Error(`Presign failed (${presignResp.status}): ${msg}`);
+        }
+        const { url: s3Url } = (await presignResp.json()) as { url: string };
+        if (!s3Url) throw new Error("Empty presign URL");
 
-        return res.json({ key: storedKey, url });
+        // Read file from disk and PUT to S3
+        const fileBuffer = fs.readFileSync(tmpPath);
+        const uploadResp = await fetch(s3Url, {
+          method: "PUT",
+          headers: { "Content-Type": file.mimetype || "video/mp4" },
+          body: fileBuffer,
+        });
+        if (!uploadResp.ok) {
+          throw new Error(`S3 upload failed (${uploadResp.status})`);
+        }
+
+        return res.json({ key, url: `/manus-storage/${key}` });
       } catch (err: any) {
         console.error("[Upload] Error:", err);
         return res.status(500).json({ error: err?.message ?? "Upload failed" });
@@ -70,4 +90,11 @@ export function registerUploadRoute(app: Express) {
       }
     }
   );
+}
+
+function getForgeConfig() {
+  const forgeUrl = ENV.forgeApiUrl.replace(/\/+$/, "");
+  const forgeKey = ENV.forgeApiKey;
+  if (!forgeUrl || !forgeKey) throw new Error("Forge config missing");
+  return { forgeUrl, forgeKey };
 }
