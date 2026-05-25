@@ -85,11 +85,13 @@ function nanoid(): string {
 async function blobToBase64(blob: Blob): Promise<string> {
   const arrayBuffer = await blob.arrayBuffer();
   const uint8 = new Uint8Array(arrayBuffer);
-  // btoa works on strings; convert byte-by-byte in small chunks to avoid stack overflow
+  // Convert bytes to binary string in chunks to avoid stack overflow
   let binary = "";
   const chunkSize = 8192;
   for (let i = 0; i < uint8.length; i += chunkSize) {
-    binary += String.fromCharCode.apply(null, Array.from(uint8.subarray(i, i + chunkSize)));
+    const chunk = uint8.subarray(i, i + chunkSize);
+    // Use reduce to safely convert each byte to a character
+    binary += Array.from(chunk).map(b => String.fromCharCode(b)).join("");
   }
   return btoa(binary);
 }
