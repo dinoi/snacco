@@ -1,6 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { trpc, trpcClient } from "@/lib/trpc";
+import { trpc } from "@/lib/trpc";
 import { formatTime } from "@/lib/utils";
 import {
   CheckCircle,
@@ -18,8 +18,6 @@ import { toast } from "sonner";
 
 const DEMO_MAX_SECONDS = 30;
 const TUTORIAL_MAX_SECONDS = 300;
-const CHUNK_SIZE = 512 * 1024; // 512 KB per chunk — small enough to be reliable on mobile Safari
-
 const CATEGORIES = [
   "Dance", "Fitness", "Yoga", "Martial Arts", "Music",
   "Art & Drawing", "Cooking", "Language", "DIY & Crafts", "Other",
@@ -74,26 +72,6 @@ function generateThumbnail(file: File): Promise<string | null> {
   });
 }
 
-// ── Nano-id style unique ID generator ────────────────────────────────
-function nanoid(): string {
-  return Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 12);
-}
-
-// ── Read a Blob as base64 string ──────────────────────────────────────
-// Uses ArrayBuffer → Uint8Array → btoa for maximum compatibility on
-// mobile Safari (FileReader.readAsDataURL is unreliable on large blobs).
-async function blobToBase64(blob: Blob): Promise<string> {
-  const arrayBuffer = await blob.arrayBuffer();
-  const uint8 = new Uint8Array(arrayBuffer);
-  // btoa works on strings; convert byte-by-byte in small chunks to avoid stack overflow
-  let binary = "";
-  const chunkSize = 8192;
-  for (let i = 0; i < uint8.length; i += chunkSize) {
-    binary += String.fromCharCode.apply(null, Array.from(uint8.subarray(i, i + chunkSize)));
-  }
-  return btoa(binary);
-}
-
 export default function CreatorUpload() {
   const { isAuthenticated, user } = useAuth();
   const [, navigate] = useLocation();
@@ -125,8 +103,6 @@ export default function CreatorUpload() {
   const demoInputRef = useRef<HTMLInputElement>(null);
   const tutorialInputRef = useRef<HTMLInputElement>(null);
 
-  const uploadChunkMutation = trpc.tutorials.uploadChunk.useMutation();
-
   const publishMutation = trpc.tutorials.publish.useMutation({
     onSuccess: () => {
       utils.tutorials.feed.invalidate();
@@ -146,73 +122,54 @@ export default function CreatorUpload() {
   }
 
   // ── Chunked upload ─────────────────────────────────────────────────
-  // Phase 1: send all chunks (each request is small, no timeout risk)
-  // Phase 2: poll pollUploadStatus every 3s until server finishes reassembly + S3 upload
-  const uploadVideoChunked = async (
+  // Single multipart FormData POST — browser streams the file natively,
+  // no base64 overhead, real upload progress via XHR.
+  const uploadVideoChunked = (
     file: File,
     type: "demo" | "tutorial",
     onProgress: (pct: number) => void
   ): Promise<{ key: string; url: string }> => {
-    const uploadId = nanoid();
-    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    return new Promise((resolve, reject) => {
+      const formData = new FormData();
+      formData.append("video", file);
+      formData.append("type", type);
 
-    // Phase 1: send all chunks (progress 0->90%)
-    for (let i = 0; i < totalChunks; i++) {
-      const start = i * CHUNK_SIZE;
-      const end = Math.min(start + CHUNK_SIZE, file.size);
-      const chunkBlob = file.slice(start, end);
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/upload-video");
+      xhr.withCredentials = true; // send session cookie
 
-      let chunkData: string;
-      try {
-        chunkData = await blobToBase64(chunkBlob);
-      } catch (encErr: any) {
-        throw new Error(`Failed to read chunk ${i + 1}/${totalChunks}: ${encErr?.message ?? encErr}`);
-      }
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          onProgress(Math.round((e.loaded / e.total) * 100));
+        }
+      };
 
-      try {
-        await uploadChunkMutation.mutateAsync({
-          uploadId,
-          chunkIndex: i,
-          totalChunks,
-          chunkData,
-          fileName: file.name,
-          mimeType: file.type || "video/mp4",
-          type,
-        });
-      } catch (sendErr: any) {
-        throw new Error(`Failed to send chunk ${i + 1}/${totalChunks}: ${sendErr?.message ?? sendErr}`);
-      }
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            if (data.url && data.key) {
+              onProgress(100);
+              resolve({ key: data.key, url: data.url });
+            } else {
+              reject(new Error(data.error ?? "Upload response missing url/key"));
+            }
+          } catch {
+            reject(new Error("Invalid response from upload server"));
+          }
+        } else {
+          let msg = `Upload failed (HTTP ${xhr.status})`;
+          try { msg = JSON.parse(xhr.responseText)?.error ?? msg; } catch {}
+          reject(new Error(msg));
+        }
+      };
 
-      onProgress(Math.round(((i + 1) / totalChunks) * 90));
-    }
+      xhr.onerror = () => reject(new Error("Network error during upload. Please check your connection."));
+      xhr.ontimeout = () => reject(new Error("Upload timed out. Please try again."));
+      xhr.timeout = 20 * 60 * 1000; // 20 minute timeout
 
-    // Phase 2: poll until server finishes reassembly + S3 upload (90->100%)
-    onProgress(92);
-    const POLL_INTERVAL_MS = 3000;
-    const MAX_WAIT_MS = 10 * 60 * 1000; // 10 minutes max
-    const deadline = Date.now() + MAX_WAIT_MS;
-
-    while (Date.now() < deadline) {
-      await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
-
-      let statusResult: any;
-      try {
-        statusResult = await trpcClient.tutorials.pollUploadStatus.query({ uploadId });
-      } catch {
-        continue; // transient error, keep polling
-      }
-
-      if (statusResult?.status === "done") {
-        onProgress(100);
-        return { key: statusResult.key, url: statusResult.url };
-      }
-      if (statusResult?.status === "error") {
-        throw new Error(`Server processing failed: ${statusResult.error}`);
-      }
-      // status === 'assembling' or 'unknown' — keep waiting
-    }
-
-    throw new Error("Upload timed out waiting for server to finish. Please try again.");
+      xhr.send(formData);
+    });
   };
 
   // ── Video file handler ─────────────────────────────────────────────

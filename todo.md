@@ -67,3 +67,11 @@
 - [x] Refactor client uploadVideoChunked: after all chunks sent, poll pollUploadStatus every 3s until status=done or error
 - [x] Bump version badge to v1.19
 - [x] Save checkpoint and publish
+
+## Upload Fix v1.20 — Native multipart FormData POST (replace chunked base64)
+- [ ] Install multer, add /api/upload Express route that receives multipart file and calls storagePut
+- [ ] Increase Express body-parser limit to 300MB for the upload route
+- [ ] Rewrite CreatorUpload.tsx upload to use XMLHttpRequest FormData POST with real progress events
+- [ ] Remove uploadChunk / pollUploadStatus tRPC procedures (keep for reference or delete)
+- [ ] Bump version badge to v1.20
+- [ ] Save checkpoint and publish
