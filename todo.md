@@ -67,4 +67,4 @@
 - [x] Add video scrubbing (click/drag on progress bar to seek)
 - [x] Add marker editing: rename + drag-to-reorder
 - [x] Add draggable circle handle on timeline for current time scrubbing
-- [ ] Fix published upload failure (chunked base64 tRPC approach broken on gateway)
+- [x] Fix published upload failure: replaced chunked base64 tRPC with direct multipart FormData POST to /api/upload-video
