@@ -67,5 +67,4 @@
 - [x] Add video scrubbing (click/drag on progress bar to seek)
 - [x] Add marker editing: rename + drag-to-reorder
 - [x] Add draggable circle handle on timeline for current time scrubbing
-- [x] Add TikTok-style swipe navigation: full-screen feed, swipe up/down to navigate, loop at ends
 - [ ] Fix published upload failure (chunked base64 tRPC approach broken on gateway)
