@@ -18,7 +18,6 @@ import { toast } from "sonner";
 
 const DEMO_MAX_SECONDS = 30;
 const TUTORIAL_MAX_SECONDS = 300;
-const CHUNK_SIZE = 512 * 1024; // 512 KB per chunk — small enough to be reliable on mobile Safari
 
 const CATEGORIES = [
   "Dance", "Fitness", "Yoga", "Martial Arts", "Music",
@@ -82,19 +81,6 @@ function nanoid(): string {
 // ── Read a Blob as base64 string ──────────────────────────────────────
 // Uses ArrayBuffer → Uint8Array → btoa for maximum compatibility on
 // mobile Safari (FileReader.readAsDataURL is unreliable on large blobs).
-async function blobToBase64(blob: Blob): Promise<string> {
-  const arrayBuffer = await blob.arrayBuffer();
-  const uint8 = new Uint8Array(arrayBuffer);
-  // Convert bytes to binary string in chunks to avoid stack overflow
-  let binary = "";
-  const chunkSize = 8192;
-  for (let i = 0; i < uint8.length; i += chunkSize) {
-    const chunk = uint8.subarray(i, i + chunkSize);
-    // Use reduce to safely convert each byte to a character
-    binary += Array.from(chunk).map(b => String.fromCharCode(b)).join("");
-  }
-  return btoa(binary);
-}
 
 export default function CreatorUpload() {
   const { isAuthenticated, user } = useAuth();
@@ -127,7 +113,6 @@ export default function CreatorUpload() {
   const demoInputRef = useRef<HTMLInputElement>(null);
   const tutorialInputRef = useRef<HTMLInputElement>(null);
 
-  const uploadChunkMutation = trpc.tutorials.uploadChunk.useMutation();
 
   const publishMutation = trpc.tutorials.publish.useMutation({
     onSuccess: () => {
@@ -147,52 +132,57 @@ export default function CreatorUpload() {
     );
   }
 
-  // ── Chunked upload ─────────────────────────────────────────────────
-  // Splits file into CHUNK_SIZE slices, sends each via tRPC mutation.
-  // The server reassembles and calls storagePut on the final chunk.
-  const uploadVideoChunked = async (
+  // ── Direct multipart upload ──────────────────────────────────────────
+  // Uses XMLHttpRequest to POST the file directly to /api/upload-video.
+  // Server handles multipart parsing and S3 upload via storagePut.
+  const uploadVideoDirect = async (
     file: File,
     type: "demo" | "tutorial",
     onProgress: (pct: number) => void
   ): Promise<{ key: string; url: string }> => {
-    const uploadId = nanoid();
-    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-    let lastResult: any = null;
+    return new Promise((resolve, reject) => {
+      const formData = new FormData();
+      formData.append("video", file);
+      formData.append("type", type);
 
-    for (let i = 0; i < totalChunks; i++) {
-      const start = i * CHUNK_SIZE;
-      const end = Math.min(start + CHUNK_SIZE, file.size);
-      const chunkBlob = file.slice(start, end);
+      const xhr = new XMLHttpRequest();
 
-      let chunkData: string;
-      try {
-        chunkData = await blobToBase64(chunkBlob);
-      } catch (encErr: any) {
-        throw new Error(`Failed to read chunk ${i + 1}/${totalChunks}: ${encErr?.message ?? encErr}`);
-      }
+      xhr.upload.addEventListener("progress", (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 100);
+          onProgress(pct);
+        }
+      });
 
-      try {
-        lastResult = await uploadChunkMutation.mutateAsync({
-          uploadId,
-          chunkIndex: i,
-          totalChunks,
-          chunkData,
-          fileName: file.name,
-          mimeType: file.type || "video/mp4",
-          type,
-        });
-      } catch (sendErr: any) {
-        throw new Error(`Failed to send chunk ${i + 1}/${totalChunks}: ${sendErr?.message ?? sendErr}`);
-      }
+      xhr.addEventListener("load", () => {
+        if (xhr.status === 200) {
+          try {
+            const result = JSON.parse(xhr.responseText);
+            resolve({ key: result.key, url: result.url });
+          } catch (err) {
+            reject(new Error("Invalid server response"));
+          }
+        } else {
+          try {
+            const error = JSON.parse(xhr.responseText);
+            reject(new Error(error.error || "Upload failed"));
+          } catch {
+            reject(new Error(`Upload failed with status ${xhr.status}`));
+          }
+        }
+      });
 
-      onProgress(Math.round(((i + 1) / totalChunks) * 100));
-    }
+      xhr.addEventListener("error", () => {
+        reject(new Error("Network error during upload"));
+      });
 
-    if (!lastResult?.done || !lastResult?.url) {
-      throw new Error("Upload did not complete — please try again.");
-    }
+      xhr.addEventListener("abort", () => {
+        reject(new Error("Upload cancelled"));
+      });
 
-    return { key: lastResult.key, url: lastResult.url };
+      xhr.open("POST", "/api/upload-video");
+      xhr.send(formData);
+    });
   };
 
   // ── Video file handler ─────────────────────────────────────────────
@@ -228,7 +218,7 @@ export default function CreatorUpload() {
     generateThumbnail(file).then((dataUrl) => setThumbnailDataUrl(dataUrl));
 
     try {
-      const result = await uploadVideoChunked(file, type, setUploadProgress);
+      const result = await uploadVideoDirect(file, type, setUploadProgress);
       const uploaded: UploadedVideo = {
         url: result.url,
         key: result.key,
