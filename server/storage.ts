@@ -53,15 +53,10 @@ export async function storagePut(
   if (!s3Url) throw new Error("Forge returned empty presign URL");
 
   // 2. PUT file directly to S3
-  const blob =
-    typeof data === "string"
-      ? new Blob([data], { type: contentType })
-      : new Blob([data as any], { type: contentType });
-
   const uploadResp = await fetch(s3Url, {
     method: "PUT",
     headers: { "Content-Type": contentType },
-    body: blob,
+    body: typeof data === "string" ? data : new Uint8Array(data as any),
   });
 
   if (!uploadResp.ok) {

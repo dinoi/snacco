@@ -69,9 +69,9 @@
 - [x] Save checkpoint and publish
 
 ## Upload Fix v1.20 — Native multipart FormData POST (replace chunked base64)
-- [ ] Install multer, add /api/upload Express route that receives multipart file and calls storagePut
-- [ ] Increase Express body-parser limit to 300MB for the upload route
-- [ ] Rewrite CreatorUpload.tsx upload to use XMLHttpRequest FormData POST with real progress events
-- [ ] Remove uploadChunk / pollUploadStatus tRPC procedures (keep for reference or delete)
-- [ ] Bump version badge to v1.20
-- [ ] Save checkpoint and publish
+- [x] Install multer, add /api/upload Express route that receives multipart file and calls storagePut
+- [x] Increase Express body-parser limit to 300MB for the upload route
+- [x] Rewrite CreatorUpload.tsx upload to use XMLHttpRequest FormData POST with real progress events
+- [x] Remove uploadChunk / pollUploadStatus tRPC procedures (kept in routers.ts but unused by client)
+- [x] Bump version badge to v1.20
+- [x] Save checkpoint and publish
