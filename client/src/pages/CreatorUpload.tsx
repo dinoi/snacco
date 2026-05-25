@@ -1,6 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { trpc, trpcClient } from "@/lib/trpc";
+import { trpc } from "@/lib/trpc";
 import { formatTime } from "@/lib/utils";
 import {
   CheckCircle,
@@ -149,7 +149,7 @@ export default function CreatorUpload() {
 
   // ── Chunked upload ─────────────────────────────────────────────────
   // Splits file into CHUNK_SIZE slices, sends each via tRPC mutation.
-  // After all chunks: server starts background assembly, client polls for completion.
+  // The server reassembles and calls storagePut on the final chunk.
   const uploadVideoChunked = async (
     file: File,
     type: "demo" | "tutorial",
@@ -159,7 +159,6 @@ export default function CreatorUpload() {
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
     let lastResult: any = null;
 
-    // Phase 1: Send all chunks
     for (let i = 0; i < totalChunks; i++) {
       const start = i * CHUNK_SIZE;
       const end = Math.min(start + CHUNK_SIZE, file.size);
@@ -186,42 +185,14 @@ export default function CreatorUpload() {
         throw new Error(`Failed to send chunk ${i + 1}/${totalChunks}: ${sendErr?.message ?? sendErr}`);
       }
 
-      // Progress: 0-90% for chunk uploads
-      onProgress(Math.round(((i + 1) / totalChunks) * 90));
+      onProgress(Math.round(((i + 1) / totalChunks) * 100));
     }
 
-    // Phase 2: Poll for assembly completion
-    if (!lastResult?.assemblyId) {
-      throw new Error("Server did not return assembly ID");
+    if (!lastResult?.done || !lastResult?.url) {
+      throw new Error("Upload did not complete — please try again.");
     }
 
-    const assemblyId = lastResult.assemblyId;
-    let pollCount = 0;
-    const maxPolls = 300; // 10 minutes max (2s intervals)
-
-    while (pollCount < maxPolls) {
-      try {
-        const status = await trpcClient.tutorials.pollAssembly.query({ assemblyId });
-
-        if (status.status === "done") {
-          onProgress(100);
-          return { key: status.key!, url: status.url! };
-        } else if (status.status === "error") {
-          throw new Error(`Server assembly failed: ${status.error}`);
-        }
-        // status === "assembling" or "not_found", keep polling
-      } catch (pollErr: any) {
-        if (pollErr.message?.includes("Server assembly failed")) throw pollErr;
-        // Network error, retry
-      }
-
-      // Progress: 90-99% while assembling
-      onProgress(90 + Math.min(9, Math.floor(pollCount / 30)));
-      pollCount++;
-      await new Promise(r => setTimeout(r, 2000)); // Poll every 2s
-    }
-
-    throw new Error("Upload assembly timeout after 10 minutes");
+    return { key: lastResult.key, url: lastResult.url };
   };
 
   // ── Video file handler ─────────────────────────────────────────────
