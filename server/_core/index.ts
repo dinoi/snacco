@@ -9,7 +9,6 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { registerUploadRoute } from "../uploadRoute";
-import { registerChunkUploadRoute } from "../chunkUploadRoute";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -37,17 +36,16 @@ async function startServer() {
   // The upload route is handled by multer which has its own 350MB limit.
   // If express.json runs first on multipart requests it rejects them at 50MB (413).
   app.use((req, res, next) => {
-    if (req.path === "/api/upload-video" || req.path === "/api/upload-chunk") return next();
+    if (req.path === "/api/upload-video") return next();
     express.json({ limit: "50mb" })(req, res, next);
   });
   app.use((req, res, next) => {
-    if (req.path === "/api/upload-video" || req.path === "/api/upload-chunk") return next();
+    if (req.path === "/api/upload-video") return next();
     express.urlencoded({ limit: "50mb", extended: true })(req, res, next);
   });
   registerStorageProxy(app);
   registerOAuthRoutes(app);
   registerUploadRoute(app);
-  registerChunkUploadRoute(app);
   // tRPC API
   app.use(
     "/api/trpc",
