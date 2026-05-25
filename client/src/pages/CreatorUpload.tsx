@@ -18,7 +18,7 @@ import { toast } from "sonner";
 
 const DEMO_MAX_SECONDS = 30;
 const TUTORIAL_MAX_SECONDS = 300;
-const CHUNK_SIZE = 2 * 1024 * 1024; // 2 MB per chunk
+const CHUNK_SIZE = 512 * 1024; // 512 KB per chunk — small enough to be reliable on mobile Safari
 
 const CATEGORIES = [
   "Dance", "Fitness", "Yoga", "Martial Arts", "Music",
@@ -80,18 +80,18 @@ function nanoid(): string {
 }
 
 // ── Read a Blob as base64 string ──────────────────────────────────────
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      // Strip the data URL prefix (e.g. "data:video/mp4;base64,")
-      const base64 = result.split(",")[1] ?? result;
-      resolve(base64);
-    };
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
+// Uses ArrayBuffer → Uint8Array → btoa for maximum compatibility on
+// mobile Safari (FileReader.readAsDataURL is unreliable on large blobs).
+async function blobToBase64(blob: Blob): Promise<string> {
+  const arrayBuffer = await blob.arrayBuffer();
+  const uint8 = new Uint8Array(arrayBuffer);
+  // btoa works on strings; convert byte-by-byte in small chunks to avoid stack overflow
+  let binary = "";
+  const chunkSize = 8192;
+  for (let i = 0; i < uint8.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, Array.from(uint8.subarray(i, i + chunkSize)));
+  }
+  return btoa(binary);
 }
 
 export default function CreatorUpload() {
@@ -161,17 +161,27 @@ export default function CreatorUpload() {
       const start = i * CHUNK_SIZE;
       const end = Math.min(start + CHUNK_SIZE, file.size);
       const chunkBlob = file.slice(start, end);
-      const chunkData = await blobToBase64(chunkBlob);
 
-      lastResult = await uploadChunkMutation.mutateAsync({
-        uploadId,
-        chunkIndex: i,
-        totalChunks,
-        chunkData,
-        fileName: file.name,
-        mimeType: file.type || "video/mp4",
-        type,
-      });
+      let chunkData: string;
+      try {
+        chunkData = await blobToBase64(chunkBlob);
+      } catch (encErr: any) {
+        throw new Error(`Failed to read chunk ${i + 1}/${totalChunks}: ${encErr?.message ?? encErr}`);
+      }
+
+      try {
+        lastResult = await uploadChunkMutation.mutateAsync({
+          uploadId,
+          chunkIndex: i,
+          totalChunks,
+          chunkData,
+          fileName: file.name,
+          mimeType: file.type || "video/mp4",
+          type,
+        });
+      } catch (sendErr: any) {
+        throw new Error(`Failed to send chunk ${i + 1}/${totalChunks}: ${sendErr?.message ?? sendErr}`);
+      }
 
       onProgress(Math.round(((i + 1) / totalChunks) * 100));
     }
