@@ -32,8 +32,6 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
-  // Increase request timeout to 10 minutes for large file uploads
-  server.requestTimeout = 10 * 60 * 1000; // 10 minutes in milliseconds
   // Apply JSON/urlencoded body parsers to all routes EXCEPT the multipart upload endpoint.
   // The upload route is handled by multer which has its own 350MB limit.
   // If express.json runs first on multipart requests it rejects them at 50MB (413).
