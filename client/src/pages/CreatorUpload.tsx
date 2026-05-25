@@ -4,7 +4,6 @@ import { trpc } from "@/lib/trpc";
 import { formatTime } from "@/lib/utils";
 import {
   CheckCircle,
-  ChevronDown,
   ChevronUp,
   Loader2,
   Pause,
@@ -19,6 +18,7 @@ import { toast } from "sonner";
 
 const DEMO_MAX_SECONDS = 30;
 const TUTORIAL_MAX_SECONDS = 300;
+const CHUNK_SIZE = 2 * 1024 * 1024; // 2 MB per chunk
 
 const CATEGORIES = [
   "Dance", "Fitness", "Yoga", "Martial Arts", "Music",
@@ -42,8 +42,6 @@ function getVideoDuration(file: File): Promise<number> {
 }
 
 // ── Generate a thumbnail data-URL from a video File ──────────────────
-// Uses canvas to capture a frame — works on iOS Safari where video
-// background thumbnails don't render without user interaction.
 function generateThumbnail(file: File): Promise<string | null> {
   return new Promise((resolve) => {
     const url = URL.createObjectURL(file);
@@ -76,46 +74,23 @@ function generateThumbnail(file: File): Promise<string | null> {
   });
 }
 
-// ── Two-step upload: get presigned S3 URL from server, then PUT directly to S3 ──
-// Step 1: tRPC call to get a presigned PUT URL (tiny JSON, no gateway size issue)
-// Step 2: XHR PUT directly to S3 with NO extra headers (host-only signature)
-// This bypasses the platform gateway size limit entirely.
-async function uploadVideoDirect(
-  file: File,
-  type: "demo" | "tutorial",
-  getPresignUrl: (input: { fileName: string; mimeType: string; type: "demo" | "tutorial" }) => Promise<{ key: string; s3Url: string; storageUrl: string }>,
-  onProgress: (pct: number) => void
-): Promise<{ key: string; url: string }> {
-  // Step 1: get presigned URL from our server
-  const { key, s3Url, storageUrl } = await getPresignUrl({
-    fileName: file.name,
-    mimeType: file.type || "video/mp4",
-    type,
-  });
+// ── Nano-id style unique ID generator ────────────────────────────────
+function nanoid(): string {
+  return Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 12);
+}
 
-  // Step 2: PUT file bytes directly to S3 — NO Content-Type, NO extra headers
-  // The presigned URL is signed with host-only; any extra header breaks the signature
+// ── Read a Blob as base64 string ──────────────────────────────────────
+function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("PUT", s3Url);
-    // Do NOT set any headers — the presigned URL signature covers host only
-
-    xhr.upload.addEventListener("progress", (e) => {
-      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
-    });
-
-    xhr.addEventListener("load", () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        resolve({ key, url: storageUrl });
-      } else {
-        reject(new Error(`Upload failed (${xhr.status}): ${xhr.responseText.slice(0, 200)}`));
-      }
-    });
-
-    xhr.addEventListener("error", () => reject(new Error("Network error during upload — check your connection and try again")));
-    xhr.addEventListener("abort", () => reject(new Error("Upload cancelled")));
-    // Send raw file bytes — no FormData wrapper
-    xhr.send(file);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // Strip the data URL prefix (e.g. "data:video/mp4;base64,")
+      const base64 = result.split(",")[1] ?? result;
+      resolve(base64);
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
   });
 }
 
@@ -150,7 +125,7 @@ export default function CreatorUpload() {
   const demoInputRef = useRef<HTMLInputElement>(null);
   const tutorialInputRef = useRef<HTMLInputElement>(null);
 
-  const presignMutation = trpc.tutorials.presignUpload.useMutation();
+  const uploadChunkMutation = trpc.tutorials.uploadChunk.useMutation();
 
   const publishMutation = trpc.tutorials.publish.useMutation({
     onSuccess: () => {
@@ -169,6 +144,44 @@ export default function CreatorUpload() {
       </div>
     );
   }
+
+  // ── Chunked upload ─────────────────────────────────────────────────
+  // Splits file into CHUNK_SIZE slices, sends each via tRPC mutation.
+  // The server reassembles and calls storagePut on the final chunk.
+  const uploadVideoChunked = async (
+    file: File,
+    type: "demo" | "tutorial",
+    onProgress: (pct: number) => void
+  ): Promise<{ key: string; url: string }> => {
+    const uploadId = nanoid();
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    let lastResult: any = null;
+
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, file.size);
+      const chunkBlob = file.slice(start, end);
+      const chunkData = await blobToBase64(chunkBlob);
+
+      lastResult = await uploadChunkMutation.mutateAsync({
+        uploadId,
+        chunkIndex: i,
+        totalChunks,
+        chunkData,
+        fileName: file.name,
+        mimeType: file.type || "video/mp4",
+        type,
+      });
+
+      onProgress(Math.round(((i + 1) / totalChunks) * 100));
+    }
+
+    if (!lastResult?.done || !lastResult?.url) {
+      throw new Error("Upload did not complete — please try again.");
+    }
+
+    return { key: lastResult.key, url: lastResult.url };
+  };
 
   // ── Video file handler ─────────────────────────────────────────────
   const handleVideoSelect = async (file: File, type: "demo" | "tutorial") => {
@@ -203,7 +216,7 @@ export default function CreatorUpload() {
     generateThumbnail(file).then((dataUrl) => setThumbnailDataUrl(dataUrl));
 
     try {
-      const result = await uploadVideoDirect(file, type, presignMutation.mutateAsync, setUploadProgress);
+      const result = await uploadVideoChunked(file, type, setUploadProgress);
       const uploaded: UploadedVideo = {
         url: result.url,
         key: result.key,
@@ -348,7 +361,7 @@ export default function CreatorUpload() {
             <div>
               <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">Token Price</label>
               <div className="flex gap-2">
-                {[1, 2, 3, 5].map(p => (
+                {[1, 2, 3, 5, 10].map(p => (
                   <button
                     key={p}
                     onClick={() => setTokenPrice(p)}
@@ -613,16 +626,22 @@ export default function CreatorUpload() {
               <div className="space-y-2">
                 {chapters.map((c, idx) => (
                   <div key={c.id} className="flex items-center gap-2 bg-card border border-border rounded-xl px-3 py-2.5">
-                    <button onClick={() => jumpToChapter(c.time)} className="text-xs font-mono text-primary shrink-0 w-10">{formatTime(c.time)}</button>
-                    <span className="flex-1 text-sm text-foreground truncate">{c.label}</span>
+                    <button onClick={() => jumpToChapter(c.time)}
+                      className="text-xs font-mono text-primary bg-primary/10 rounded-lg px-2 py-1 shrink-0">
+                      {formatTime(c.time)}
+                    </button>
+                    <span className="text-sm text-foreground flex-1 truncate">{c.label}</span>
                     <div className="flex items-center gap-1 shrink-0">
-                      <button onClick={() => moveChapter(c.id, -1)} disabled={idx === 0} className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground disabled:opacity-30">
+                      <button onClick={() => moveChapter(c.id, -1)} disabled={idx === 0}
+                        className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground disabled:opacity-30">
                         <ChevronUp size={12} />
                       </button>
-                      <button onClick={() => moveChapter(c.id, 1)} disabled={idx === chapters.length - 1} className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground disabled:opacity-30">
-                        <ChevronDown size={12} />
+                      <button onClick={() => moveChapter(c.id, 1)} disabled={idx === chapters.length - 1}
+                        className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground disabled:opacity-30">
+                        <ChevronUp size={12} className="rotate-180" />
                       </button>
-                      <button onClick={() => deleteChapter(c.id)} className="w-6 h-6 flex items-center justify-center rounded text-destructive">
+                      <button onClick={() => deleteChapter(c.id)}
+                        className="w-6 h-6 rounded flex items-center justify-center text-destructive">
                         <Trash2 size={12} />
                       </button>
                     </div>
@@ -636,30 +655,32 @@ export default function CreatorUpload() {
               style={{ background: "linear-gradient(135deg, oklch(0.65 0.30 340), oklch(0.55 0.28 15))" }}
               onClick={() => setStep("preview")}
             >
-              {chapters.length === 0 ? "Skip Chapters & Preview" : `Preview with ${chapters.length} Chapter${chapters.length !== 1 ? "s" : ""}`}
+              {chapters.length === 0 ? "Skip Chapters & Preview" : `Preview (${chapters.length} chapter${chapters.length > 1 ? "s" : ""})`}
             </Button>
           </div>
         )}
 
-        {/* ── Step 5: Preview & publish ─────────────────────────────── */}
-        {step === "preview" && demoVideo && tutorialVideo && (
+        {/* ── Step 5: Preview & Publish ─────────────────────────────── */}
+        {step === "preview" && (
           <div className="space-y-4">
             <div className="bg-card border border-border rounded-2xl overflow-hidden">
-              <video src={demoVideo.localUrl} className="w-full" style={{ maxHeight: "40vh" }} controls playsInline muted />
+              {demoVideo && (
+                <video src={demoVideo.localUrl} className="w-full aspect-video object-cover" muted loop playsInline autoPlay />
+              )}
               <div className="p-4 space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <h2 className="text-base font-bold text-foreground">{title}</h2>
-                  <span className="shrink-0 text-xs font-bold px-2 py-1 rounded-full bg-primary/20 text-primary">{tokenPrice} token{tokenPrice !== 1 ? "s" : ""}</span>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-primary font-semibold uppercase tracking-wide">{category}</span>
+                  <span className="text-xs text-muted-foreground">{tokenPrice} token{tokenPrice > 1 ? "s" : ""}</span>
                 </div>
-                <p className="text-xs text-muted-foreground">{category}</p>
-                {description && <p className="text-sm text-foreground/80">{description}</p>}
+                <h2 className="text-base font-bold text-foreground">{title}</h2>
+                {description && <p className="text-sm text-muted-foreground">{description}</p>}
                 {chapters.length > 0 && (
                   <div className="pt-2 space-y-1">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{chapters.length} Chapters</p>
                     {chapters.map(c => (
-                      <div key={c.id} className="flex items-center gap-2 text-sm">
-                        <span className="text-xs font-mono text-primary w-10">{formatTime(c.time)}</span>
-                        <span className="text-foreground/80">{c.label}</span>
+                      <div key={c.id} className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span className="font-mono text-primary">{formatTime(c.time)}</span>
+                        <span>{c.label}</span>
                       </div>
                     ))}
                   </div>
@@ -668,21 +689,27 @@ export default function CreatorUpload() {
             </div>
 
             <Button
-              className="w-full font-bold text-base py-6"
+              className="w-full font-bold"
               style={{ background: "linear-gradient(135deg, oklch(0.65 0.30 340), oklch(0.55 0.28 15))" }}
               disabled={publishMutation.isPending}
               onClick={handlePublish}
             >
-              {publishMutation.isPending ? <><Loader2 size={16} className="animate-spin mr-2" /> Publishing…</> : "Publish Tutorial"}
+              {publishMutation.isPending ? (
+                <><Loader2 size={16} className="animate-spin mr-2" /> Publishing…</>
+              ) : "Publish Tutorial"}
             </Button>
+            <button onClick={() => setStep("chapters")} className="w-full text-sm text-muted-foreground py-2">
+              ← Back to Chapters
+            </button>
           </div>
         )}
 
         {/* ── Done ─────────────────────────────────────────────────── */}
         {step === "done" && (
-          <div className="flex flex-col items-center justify-center py-20 gap-6 text-center">
-            <div className="w-20 h-20 rounded-full flex items-center justify-center" style={{ background: "linear-gradient(135deg, oklch(0.65 0.30 340), oklch(0.55 0.28 15))" }}>
-              <CheckCircle size={36} className="text-white" />
+          <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6 text-center">
+            <div className="w-20 h-20 rounded-full flex items-center justify-center"
+              style={{ background: "linear-gradient(135deg, oklch(0.65 0.30 340), oklch(0.55 0.28 15))" }}>
+              <CheckCircle size={40} className="text-white" />
             </div>
             <div>
               <h2 className="text-xl font-bold text-foreground">Tutorial Published!</h2>
@@ -694,8 +721,8 @@ export default function CreatorUpload() {
                 className="flex-1 font-bold"
                 style={{ background: "linear-gradient(135deg, oklch(0.65 0.30 340), oklch(0.55 0.28 15))" }}
                 onClick={() => {
-                  setStep("meta"); setTitle(""); setCategory(""); setDescription(""); setTokenPrice(1);
-                  setDemoVideo(null); setTutorialVideo(null); setChapters([]);
+                  setStep("meta"); setTitle(""); setCategory(""); setDescription("");
+                  setTokenPrice(1); setDemoVideo(null); setTutorialVideo(null); setChapters([]);
                 }}
               >
                 Upload Another
@@ -703,7 +730,6 @@ export default function CreatorUpload() {
             </div>
           </div>
         )}
-
       </div>
     </div>
   );

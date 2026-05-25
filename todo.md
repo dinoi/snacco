@@ -52,3 +52,11 @@
 - [x] Enforce demo clip max duration of 30 seconds (client-side check before upload)
 - [x] Enforce tutorial max duration of 5 minutes / 300 seconds (client-side check before upload)
 - [x] Show duration limit clearly on each upload step UI
+
+## Upload Fix v1.17 — Chunked Upload (bypass CORS + gateway limits)
+- [x] Add uploadChunk tRPC procedure: accept base64 chunk + metadata, store chunk in /tmp keyed by uploadId
+- [x] Add finalizeChunkedUpload tRPC procedure: reassemble chunks, call storagePut, clean up /tmp (integrated into uploadChunk on final chunk)
+- [x] Rewrite uploadVideoDirect in CreatorUpload.tsx to use chunked upload (2MB chunks, sequential, progress tracking)
+- [x] Switch tRPC client link to httpLink (non-batching) to ensure each chunk is a separate HTTP request
+- [x] Bump version badge to v1.17
+- [x] Save checkpoint and publish

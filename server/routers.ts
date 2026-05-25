@@ -1,5 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import fs from "fs";
+import path from "path";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
@@ -27,6 +29,19 @@ import {
   deleteChaptersByTutorial,
 } from "./db";
 import { storagePut } from "./storage";
+
+// ─── In-memory chunk registry ─────────────────────────────────────────────────
+// Tracks which chunks have been received for each upload session.
+// Key: uploadId  Value: { totalChunks, received: Set<number>, dir: string }
+const chunkRegistry = new Map<string, { totalChunks: number; received: Set<number>; dir: string }>();
+
+function getChunkDir(uploadId: string): string {
+  return path.join("/tmp", `snacco_upload_${uploadId}`);
+}
+
+function chunkPath(dir: string, index: number): string {
+  return path.join(dir, `chunk_${String(index).padStart(6, "0")}`);
+}
 
 // ─── Admin guard ──────────────────────────────────────────────────────
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -156,8 +171,73 @@ export const appRouter = router({
       return getTutorialsByCreator(ctx.user.id);
     }),
 
-    // Creator: get a presigned S3 PUT URL so the browser can upload directly
-    // (avoids routing the large video body through the app gateway)
+    // ── Chunked upload: receive one chunk at a time ──────────────────
+    // Client sends base64-encoded chunks sequentially. Each chunk is written
+    // to /tmp. When the final chunk arrives, all chunks are reassembled and
+    // uploaded to S3 via storagePut (server-side, no CORS issues).
+    uploadChunk: protectedProcedure
+      .input(z.object({
+        uploadId: z.string().min(1),       // unique per upload session (nanoid)
+        chunkIndex: z.number().int().min(0),
+        totalChunks: z.number().int().min(1),
+        chunkData: z.string(),             // base64-encoded chunk bytes
+        fileName: z.string(),
+        mimeType: z.string().default("video/mp4"),
+        type: z.enum(["demo", "tutorial"]),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { uploadId, chunkIndex, totalChunks, chunkData } = input;
+        const dir = getChunkDir(uploadId);
+
+        // Create temp dir on first chunk
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+        // Write chunk to disk
+        const buf = Buffer.from(chunkData, "base64");
+        fs.writeFileSync(chunkPath(dir, chunkIndex), buf);
+
+        // Track received chunks
+        let entry = chunkRegistry.get(uploadId);
+        if (!entry) {
+          entry = { totalChunks, received: new Set(), dir };
+          chunkRegistry.set(uploadId, entry);
+        }
+        entry.received.add(chunkIndex);
+
+        const isLast = entry.received.size === totalChunks;
+
+        if (!isLast) {
+          return { done: false, received: entry.received.size, total: totalChunks };
+        }
+
+        // All chunks received — reassemble and upload to S3
+        try {
+          const parts: Buffer[] = [];
+          for (let i = 0; i < totalChunks; i++) {
+            parts.push(fs.readFileSync(chunkPath(dir, i)));
+          }
+          const fullBuffer = Buffer.concat(parts);
+
+          const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+          const inputKey = `videos/${ctx.user.id}/${input.type}/${Date.now()}_${safeName}`;
+
+          // storagePut appends its own hash suffix and returns the real { key, url }
+          const { key: storedKey, url } = await storagePut(inputKey, fullBuffer, input.mimeType || "video/mp4");
+
+          // Clean up temp files
+          try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+          chunkRegistry.delete(uploadId);
+
+          return { done: true, url, key: storedKey };
+        } catch (err: any) {
+          // Clean up on error too
+          try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+          chunkRegistry.delete(uploadId);
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Upload assembly failed: ${err?.message}` });
+        }
+      }),
+
+    // ── Legacy presignUpload kept for reference (not used by client) ──
     presignUpload: protectedProcedure
       .input(z.object({
         fileName: z.string(),
