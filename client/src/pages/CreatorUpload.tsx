@@ -1,6 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { formatTime } from "@/lib/utils";
 import {
@@ -111,8 +110,6 @@ export default function CreatorUpload() {
   const [tutorialVideo, setTutorialVideo] = useState<UploadedVideo | null>(null);
   const [chapters, setChapters] = useState<ChapterDraft[]>([]);
   const [newChapterLabel, setNewChapterLabel] = useState("");
-  const [editingChapterId, setEditingChapterId] = useState<string | null>(null);
-  const [editingLabel, setEditingLabel] = useState("");
 
   // Upload state
   const [uploading, setUploading] = useState(false);
@@ -262,14 +259,6 @@ export default function CreatorUpload() {
   };
 
   const deleteChapter = (id: string) => setChapters(prev => prev.filter(c => c.id !== id));
-  const startEditChapter = (id: string, currentLabel: string) => {
-    setEditingChapterId(id);
-    setEditingLabel(currentLabel);
-  };
-  const saveEditChapter = (id: string) => {
-    setChapters(chapters.map(c => c.id === id ? { ...c, label: editingLabel } : c));
-    setEditingChapterId(null);
-  };
 
   const moveChapter = (id: string, dir: -1 | 1) => {
     setChapters(prev => {
@@ -359,18 +348,17 @@ export default function CreatorUpload() {
             </div>
             <div>
               <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">Category *</label>
-              <Select value={category} onValueChange={setCategory}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select a category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {CATEGORIES.map(cat => (
-                    <SelectItem key={cat} value={cat}>
-                      {cat}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="grid grid-cols-2 gap-2">
+                {CATEGORIES.map(cat => (
+                  <button
+                    key={cat}
+                    onClick={() => setCategory(cat)}
+                    className={`py-2.5 rounded-xl text-sm font-medium border transition-colors ${category === cat ? "border-primary text-primary bg-primary/10" : "border-border text-muted-foreground bg-card"}`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
             </div>
             <div>
               <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">Description</label>
@@ -599,29 +587,7 @@ export default function CreatorUpload() {
               />
               {/* Chapter markers on scrubber */}
               <div className="absolute bottom-0 left-0 right-0 px-3 pb-3 space-y-2">
-                <div 
-                  className="relative h-1 bg-white/20 rounded-full cursor-pointer"
-                  onClick={(e) => {
-                    if (!tutorialVideoRef.current || duration === 0) return;
-                    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-                    const newTime = (e.clientX - rect.left) / rect.width * duration;
-                    tutorialVideoRef.current.currentTime = newTime;
-                  }}
-                  onMouseDown={(e) => {
-                    if (!tutorialVideoRef.current || duration === 0) return;
-                    const handleMouseMove = (moveEvent: MouseEvent) => {
-                      const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-                      const newTime = (moveEvent.clientX - rect.left) / rect.width * duration;
-                      tutorialVideoRef.current!.currentTime = Math.max(0, Math.min(newTime, duration));
-                    };
-                    const handleMouseUp = () => {
-                      document.removeEventListener('mousemove', handleMouseMove);
-                      document.removeEventListener('mouseup', handleMouseUp);
-                    };
-                    document.addEventListener('mousemove', handleMouseMove);
-                    document.addEventListener('mouseup', handleMouseUp);
-                  }}
-                >
+                <div className="relative h-1 bg-white/20 rounded-full">
                   {duration > 0 && chapters.map(c => (
                     <div
                       key={c.id}
@@ -676,27 +642,7 @@ export default function CreatorUpload() {
                       className="text-xs font-mono text-primary bg-primary/10 rounded-lg px-2 py-1 shrink-0">
                       {formatTime(c.time)}
                     </button>
-                    { editingChapterId === c.id ? (
-                          <input
-                            autoFocus
-                            type="text"
-                            value={editingLabel}
-                            onChange={e => setEditingLabel(e.target.value)}
-                            onBlur={() => saveEditChapter(c.id)}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') saveEditChapter(c.id);
-                              if (e.key === 'Escape') setEditingChapterId(null);
-                            }}
-                            className="text-sm text-foreground flex-1 bg-background border border-primary rounded px-2 py-1"
-                          />
-                          ) : (
-                          <span 
-                            onClick={() => startEditChapter(c.id, c.label)}
-                            className="text-sm text-foreground flex-1 truncate cursor-pointer hover:text-primary transition-colors"
-                          >
-                            {c.label}
-                          </span>
-                          )}
+                    <span className="text-sm text-foreground flex-1 truncate">{c.label}</span>
                     <div className="flex items-center gap-1 shrink-0">
                       <button onClick={() => moveChapter(c.id, -1)} disabled={idx === 0}
                         className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground disabled:opacity-30">
