@@ -66,4 +66,5 @@
 - [x] Replace genre button grid with Select dropdown
 - [x] Add video scrubbing (click/drag on progress bar to seek)
 - [x] Add marker editing: rename + drag-to-reorder
-- [ ] Publish and test on phone
+- [x] Add draggable circle handle on timeline for current time scrubbing
+- [ ] Fix published upload failure (chunked base64 tRPC approach broken on gateway)

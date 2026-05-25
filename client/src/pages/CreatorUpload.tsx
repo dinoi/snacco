@@ -630,6 +630,44 @@ export default function CreatorUpload() {
                     />
                   ))}
                   <div className="h-full rounded-full bg-primary" style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }} />
+                  {/* Draggable scrubber handle */}
+                  {duration > 0 && (
+                    <div
+                      className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-white border-2 border-primary cursor-grab active:cursor-grabbing shadow-lg"
+                      style={{ left: `${(currentTime / duration) * 100}%` }}
+                      onMouseDown={(e) => {
+                        if (!tutorialVideoRef.current || duration === 0) return;
+                        e.preventDefault();
+                        const handleMouseMove = (moveEvent: MouseEvent) => {
+                          const rect = (e.currentTarget as HTMLDivElement).parentElement?.getBoundingClientRect();
+                          if (!rect) return;
+                          const newTime = Math.max(0, Math.min((moveEvent.clientX - rect.left) / rect.width * duration, duration));
+                          tutorialVideoRef.current!.currentTime = newTime;
+                        };
+                        const handleMouseUp = () => {
+                          document.removeEventListener('mousemove', handleMouseMove);
+                          document.removeEventListener('mouseup', handleMouseUp);
+                        };
+                        document.addEventListener('mousemove', handleMouseMove);
+                        document.addEventListener('mouseup', handleMouseUp);
+                      }}
+                      onTouchStart={(e) => {
+                        if (!tutorialVideoRef.current || duration === 0) return;
+                        const handleTouchMove = (moveEvent: TouchEvent) => {
+                          const rect = (e.currentTarget as HTMLDivElement).parentElement?.getBoundingClientRect();
+                          if (!rect) return;
+                          const newTime = Math.max(0, Math.min((moveEvent.touches[0].clientX - rect.left) / rect.width * duration, duration));
+                          tutorialVideoRef.current!.currentTime = newTime;
+                        };
+                        const handleTouchEnd = () => {
+                          document.removeEventListener('touchmove', handleTouchMove);
+                          document.removeEventListener('touchend', handleTouchEnd);
+                        };
+                        document.addEventListener('touchmove', handleTouchMove);
+                        document.addEventListener('touchend', handleTouchEnd);
+                      }}
+                    />
+                  )}
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-white/60 text-xs">{formatTime(currentTime)}</span>
