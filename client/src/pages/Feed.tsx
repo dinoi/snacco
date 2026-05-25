@@ -16,7 +16,7 @@ export default function Feed() {
       <header className="sticky top-0 z-40 bg-background/90 backdrop-blur-md border-b border-border px-4 py-3 flex items-center justify-between safe-top">
         <div className="flex items-baseline gap-2">
           <h1 className="text-2xl font-black gradient-text tracking-tight">snacco</h1>
-          <span className="text-[10px] font-mono text-gray-500 border border-gray-700 rounded px-1 py-0.5 leading-none">v1.18</span>
+          <span className="text-[10px] font-mono text-gray-500 border border-gray-700 rounded px-1 py-0.5 leading-none">v1.19</span>
         </div>
         {!isAuthenticated && (
           <a

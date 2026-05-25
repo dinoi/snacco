@@ -1,6 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { trpc } from "@/lib/trpc";
+import { trpc, trpcClient } from "@/lib/trpc";
 import { formatTime } from "@/lib/utils";
 import {
   CheckCircle,
@@ -146,8 +146,8 @@ export default function CreatorUpload() {
   }
 
   // ── Chunked upload ─────────────────────────────────────────────────
-  // Splits file into CHUNK_SIZE slices, sends each via tRPC mutation.
-  // The server reassembles and calls storagePut on the final chunk.
+  // Phase 1: send all chunks (each request is small, no timeout risk)
+  // Phase 2: poll pollUploadStatus every 3s until server finishes reassembly + S3 upload
   const uploadVideoChunked = async (
     file: File,
     type: "demo" | "tutorial",
@@ -155,8 +155,8 @@ export default function CreatorUpload() {
   ): Promise<{ key: string; url: string }> => {
     const uploadId = nanoid();
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-    let lastResult: any = null;
 
+    // Phase 1: send all chunks (progress 0->90%)
     for (let i = 0; i < totalChunks; i++) {
       const start = i * CHUNK_SIZE;
       const end = Math.min(start + CHUNK_SIZE, file.size);
@@ -170,7 +170,7 @@ export default function CreatorUpload() {
       }
 
       try {
-        lastResult = await uploadChunkMutation.mutateAsync({
+        await uploadChunkMutation.mutateAsync({
           uploadId,
           chunkIndex: i,
           totalChunks,
@@ -183,14 +183,36 @@ export default function CreatorUpload() {
         throw new Error(`Failed to send chunk ${i + 1}/${totalChunks}: ${sendErr?.message ?? sendErr}`);
       }
 
-      onProgress(Math.round(((i + 1) / totalChunks) * 100));
+      onProgress(Math.round(((i + 1) / totalChunks) * 90));
     }
 
-    if (!lastResult?.done || !lastResult?.url) {
-      throw new Error("Upload did not complete — please try again.");
+    // Phase 2: poll until server finishes reassembly + S3 upload (90->100%)
+    onProgress(92);
+    const POLL_INTERVAL_MS = 3000;
+    const MAX_WAIT_MS = 10 * 60 * 1000; // 10 minutes max
+    const deadline = Date.now() + MAX_WAIT_MS;
+
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+
+      let statusResult: any;
+      try {
+        statusResult = await trpcClient.tutorials.pollUploadStatus.query({ uploadId });
+      } catch {
+        continue; // transient error, keep polling
+      }
+
+      if (statusResult?.status === "done") {
+        onProgress(100);
+        return { key: statusResult.key, url: statusResult.url };
+      }
+      if (statusResult?.status === "error") {
+        throw new Error(`Server processing failed: ${statusResult.error}`);
+      }
+      // status === 'assembling' or 'unknown' — keep waiting
     }
 
-    return { key: lastResult.key, url: lastResult.url };
+    throw new Error("Upload timed out waiting for server to finish. Please try again.");
   };
 
   // ── Video file handler ─────────────────────────────────────────────

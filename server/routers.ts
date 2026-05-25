@@ -32,8 +32,45 @@ import { storagePut } from "./storage";
 
 // ─── In-memory chunk registry ─────────────────────────────────────────────────
 // Tracks which chunks have been received for each upload session.
-// Key: uploadId  Value: { totalChunks, received: Set<number>, dir: string }
+type AssemblyStatus =
+  | { status: "receiving" }
+  | { status: "assembling" }
+  | { status: "done"; url: string; key: string }
+  | { status: "error"; error: string };
+
 const chunkRegistry = new Map<string, { totalChunks: number; received: Set<number>; dir: string }>();
+const assemblyStatus = new Map<string, AssemblyStatus>();
+
+// Background assembly: runs without blocking the HTTP request
+async function assembleAndUpload(
+  uploadId: string,
+  dir: string,
+  totalChunks: number,
+  userId: number,
+  type: string,
+  fileName: string,
+  mimeType: string,
+): Promise<void> {
+  assemblyStatus.set(uploadId, { status: "assembling" });
+  try {
+    const parts: Buffer[] = [];
+    for (let i = 0; i < totalChunks; i++) {
+      parts.push(fs.readFileSync(chunkPath(dir, i)));
+    }
+    const fullBuffer = Buffer.concat(parts);
+    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const inputKey = `videos/${userId}/${type}/${Date.now()}_${safeName}`;
+    const { key: storedKey, url } = await storagePut(inputKey, fullBuffer, mimeType || "video/mp4");
+    assemblyStatus.set(uploadId, { status: "done", url, key: storedKey });
+  } catch (err: any) {
+    assemblyStatus.set(uploadId, { status: "error", error: err?.message ?? "Assembly failed" });
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+    chunkRegistry.delete(uploadId);
+    // Auto-clean status after 10 minutes
+    setTimeout(() => assemblyStatus.delete(uploadId), 10 * 60 * 1000);
+  }
+}
 
 function getChunkDir(uploadId: string): string {
   return path.join("/tmp", `snacco_upload_${uploadId}`);
@@ -207,34 +244,30 @@ export const appRouter = router({
         const isLast = entry.received.size === totalChunks;
 
         if (!isLast) {
-          return { done: false, received: entry.received.size, total: totalChunks };
+          return { done: false, assembling: false, received: entry.received.size, total: totalChunks };
         }
 
-        // All chunks received — reassemble and upload to S3
-        try {
-          const parts: Buffer[] = [];
-          for (let i = 0; i < totalChunks; i++) {
-            parts.push(fs.readFileSync(chunkPath(dir, i)));
-          }
-          const fullBuffer = Buffer.concat(parts);
+        // All chunks received — kick off background assembly (non-blocking) and return immediately
+        assemblyStatus.set(uploadId, { status: "assembling" });
+        // Fire-and-forget: do NOT await this
+        assembleAndUpload(
+          uploadId, dir, totalChunks,
+          ctx.user.id, input.type, input.fileName, input.mimeType || "video/mp4"
+        ).catch(() => {/* errors stored in assemblyStatus */});
 
-          const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
-          const inputKey = `videos/${ctx.user.id}/${input.type}/${Date.now()}_${safeName}`;
+        return { done: false, assembling: true, received: entry.received.size, total: totalChunks };
+      }),
 
-          // storagePut appends its own hash suffix and returns the real { key, url }
-          const { key: storedKey, url } = await storagePut(inputKey, fullBuffer, input.mimeType || "video/mp4");
-
-          // Clean up temp files
-          try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
-          chunkRegistry.delete(uploadId);
-
-          return { done: true, url, key: storedKey };
-        } catch (err: any) {
-          // Clean up on error too
-          try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
-          chunkRegistry.delete(uploadId);
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Upload assembly failed: ${err?.message}` });
+    // ── Poll assembly status after all chunks are sent ───────────────
+    pollUploadStatus: protectedProcedure
+      .input(z.object({ uploadId: z.string().min(1) }))
+      .query(({ input }) => {
+        const status = assemblyStatus.get(input.uploadId);
+        if (!status) {
+          // Not found — either never started or already cleaned up
+          return { status: "unknown" as const };
         }
+        return status;
       }),
 
     // ── Legacy presignUpload kept for reference (not used by client) ──

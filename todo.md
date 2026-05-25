@@ -60,3 +60,10 @@
 - [x] Switch tRPC client link to httpLink (non-batching) to ensure each chunk is a separate HTTP request
 - [x] Bump version badge to v1.17
 - [x] Save checkpoint and publish
+
+## Upload Fix v1.19 — Async reassembly to fix large-file timeout
+- [x] Refactor uploadChunk: last chunk triggers background reassembly job (non-blocking), returns { done: false, assembling: true } immediately
+- [x] Add pollUploadStatus tRPC procedure: returns { status: 'assembling'|'done'|'error', url?, key?, error? }
+- [x] Refactor client uploadVideoChunked: after all chunks sent, poll pollUploadStatus every 3s until status=done or error
+- [x] Bump version badge to v1.19
+- [x] Save checkpoint and publish
