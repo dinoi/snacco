@@ -231,3 +231,57 @@ export async function isUserTutorialUnlocked(userId: number, tutorialId: number)
 
   return result.length > 0;
 }
+
+
+// ─── Admin helpers ────────────────────────────────────────────────────
+
+export async function getAllTutorials() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(tutorials);
+}
+
+export async function setTutorialPublished(tutorialId: number, isPublished: boolean) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(tutorials).set({ isPublished }).where(eq(tutorials.id, tutorialId));
+}
+
+export async function getTotalUsers() {
+  const db = await getDb();
+  if (!db) return 0;
+  const result = await db.select().from(users);
+  return result.length;
+}
+
+export async function getTotalUnlocks() {
+  const db = await getDb();
+  if (!db) return 0;
+  const result = await db.select().from(unlocks);
+  return result.length;
+}
+
+export async function getTotalTokensConsumed() {
+  const db = await getDb();
+  if (!db) return 0;
+  const result = await db.select().from(tokenTransactions);
+  return result.reduce((sum, t) => sum + (t.amount || 0), 0);
+}
+
+export async function getTokenHistory(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(tokenTransactions).where(eq(tokenTransactions.userId, userId));
+}
+
+export async function getAllTokenTransactions() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(tokenTransactions);
+}
+
+export async function getChaptersByTutorial(tutorialId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(chapters).where(eq(chapters.tutorialId, tutorialId));
+}
