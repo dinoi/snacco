@@ -3,7 +3,7 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import fs from "node:fs";
 import path from "node:path";
-import { defineConfig, type Plugin, type ViteDevServer } from "vite";
+import { defineConfig, type Plugin, type ViteDevServer, loadEnv } from "vite";
 
 
 // =============================================================================
@@ -152,31 +152,38 @@ function vitePluginManusDebugCollector(): Plugin {
 
 const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusDebugCollector()];
 
-export default defineConfig({
-  plugins,
-  resolve: {
-    alias: {
-      "@": path.resolve(import.meta.dirname, "client", "src"),
-      "@shared": path.resolve(import.meta.dirname, "shared"),
-      "@assets": path.resolve(import.meta.dirname, "attached_assets"),
+export default defineConfig(({ command, mode }) => {
+  // Load environment variables based on mode
+  const env = loadEnv(mode, process.cwd(), '');
+  
+  return {
+    plugins,
+    resolve: {
+      alias: {
+        "@": path.resolve(import.meta.dirname, "client", "src"),
+        "@shared": path.resolve(import.meta.dirname, "shared"),
+        "@assets": path.resolve(import.meta.dirname, "attached_assets"),
+      },
     },
-  },
-  envDir: path.resolve(import.meta.dirname),
-  define: {
-    'import.meta.env.VITE_GITHUB_CLIENT_ID': JSON.stringify(process.env.GITHUB_CLIENT_ID || ''),
-  },
-  root: path.resolve(import.meta.dirname, "client"),
-  publicDir: path.resolve(import.meta.dirname, "client", "public"),
-  build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
-    emptyOutDir: true,
-  },
-  server: {
-    host: true,
-    allowedHosts: ["localhost", "127.0.0.1", "*.railway.app"],
-    fs: {
-      strict: true,
-      deny: ["**/.*"],
+    envDir: path.resolve(import.meta.dirname),
+    define: {
+      'import.meta.env.VITE_GITHUB_CLIENT_ID': JSON.stringify(
+        env.VITE_GITHUB_CLIENT_ID || process.env.GITHUB_CLIENT_ID || ''
+      ),
     },
-  },
+    root: path.resolve(import.meta.dirname, "client"),
+    publicDir: path.resolve(import.meta.dirname, "client", "public"),
+    build: {
+      outDir: path.resolve(import.meta.dirname, "dist/public"),
+      emptyOutDir: true,
+    },
+    server: {
+      host: true,
+      allowedHosts: ["localhost", "127.0.0.1", "*.railway.app"],
+      fs: {
+        strict: true,
+        deny: ["**/.*"],
+      },
+    },
+  };
 });
