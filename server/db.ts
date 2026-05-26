@@ -1,5 +1,6 @@
-import { and, desc, eq, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
+import { eq, desc } from "drizzle-orm";
 import {
   chapters,
   InsertChapter,
@@ -10,15 +11,16 @@ import {
   tutorials,
   unlocks,
   users,
-} from "../drizzle/schema";
+} from "../drizzle/schema-postgres";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
 export async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
+  if (!_db && ENV.databaseUrl) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      const pool = new Pool({ connectionString: ENV.databaseUrl });
+      _db = drizzle(pool);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
@@ -29,47 +31,48 @@ export async function getDb() {
 
 // ─── Users ────────────────────────────────────────────────────────────
 
-export async function upsertUser(user: InsertUser): Promise<void> {
-  if (!user.openId) throw new Error("User openId is required for upsert");
+export async function upsertUser(user: InsertUser) {
   const db = await getDb();
-  if (!db) return;
+  if (!db) throw new Error("Database not connected");
 
-  const values: InsertUser = { openId: user.openId };
-  const updateSet: Record<string, unknown> = {};
+  if (!user.githubId) throw new Error("User githubId is required for upsert");
 
-  const textFields = ["name", "email", "loginMethod"] as const;
-  for (const field of textFields) {
-    const value = user[field];
-    if (value === undefined) continue;
-    const normalized = value ?? null;
-    values[field] = normalized;
-    updateSet[field] = normalized;
+  // Check if user exists
+  const existing = await db.select().from(users).where(eq(users.githubId, user.githubId)).limit(1);
+
+  if (existing.length > 0) {
+    // Update existing user
+    const updateData: Partial<InsertUser> = {
+      name: user.name,
+      email: user.email,
+      lastSignedIn: user.lastSignedIn || new Date(),
+    };
+    await db.update(users).set(updateData).where(eq(users.githubId, user.githubId));
+    return existing[0];
+  } else {
+    // Create new user
+    const result = await db
+      .insert(users)
+      .values({
+        githubId: user.githubId,
+        name: user.name,
+        email: user.email,
+        loginMethod: "github",
+        role: "user",
+        isCreator: false,
+        tokenBalance: 20,
+        lastSignedIn: user.lastSignedIn || new Date(),
+      })
+      .returning();
+
+    return result[0];
   }
-
-  if (user.lastSignedIn !== undefined) {
-    values.lastSignedIn = user.lastSignedIn;
-    updateSet.lastSignedIn = user.lastSignedIn;
-  }
-
-  if (user.role !== undefined) {
-    values.role = user.role;
-    updateSet.role = user.role;
-  } else if (user.openId === ENV.ownerOpenId) {
-    values.role = "admin";
-    updateSet.role = "admin";
-  }
-
-  if (!values.lastSignedIn) values.lastSignedIn = new Date();
-  if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
-
-  // New users get 20 tokens by default (schema default handles it)
-  await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
 }
 
-export async function getUserByOpenId(openId: string) {
+export async function getUserByGithubId(githubId: string) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
+  const result = await db.select().from(users).where(eq(users.githubId, githubId)).limit(1);
   return result[0];
 }
 
@@ -80,226 +83,151 @@ export async function getUserById(id: number) {
   return result[0];
 }
 
-export async function getAllUsers() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(users).orderBy(desc(users.createdAt));
-}
+// ─── Creator Mode ─────────────────────────────────────────────────────
 
-export async function setCreatorMode(userId: number, isCreator: boolean) {
+export async function setCreatorMode(userId: number, enabled: boolean) {
   const db = await getDb();
   if (!db) return;
-  await db.update(users).set({ isCreator }).where(eq(users.id, userId));
+  await db.update(users).set({ isCreator: enabled }).where(eq(users.id, userId));
 }
 
 // ─── Tokens ───────────────────────────────────────────────────────────
 
-export async function adjustTokens(
-  userId: number,
-  amount: number,
-  reason: string,
-  adminId?: number
-) {
+export async function adjustTokens(userId: number, delta: number, reason: string) {
   const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
+  if (!db) return;
 
-  await db.update(users).set({ tokenBalance: sql`tokenBalance + ${amount}` }).where(eq(users.id, userId));
-  const tx: InsertTokenTransaction = { userId, amount, reason, adminId };
-  await db.insert(tokenTransactions).values(tx);
-}
+  // Update balance
+  const user = await getUserById(userId);
+  if (!user) throw new Error("User not found");
 
-export async function getTokenHistory(userId: number) {
-  const db = await getDb();
-  if (!db) return [];
-  return db
-    .select()
-    .from(tokenTransactions)
-    .where(eq(tokenTransactions.userId, userId))
-    .orderBy(desc(tokenTransactions.createdAt))
-    .limit(50);
-}
+  const newBalance = Math.max(0, user.tokenBalance + delta);
+  await db.update(users).set({ tokenBalance: newBalance }).where(eq(users.id, userId));
 
-export async function getAllTokenTransactions() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(tokenTransactions).orderBy(desc(tokenTransactions.createdAt)).limit(200);
+  // Log transaction
+  await db.insert(tokenTransactions).values({
+    userId,
+    amount: delta,
+    reason,
+  });
 }
 
 // ─── Tutorials ────────────────────────────────────────────────────────
 
-export async function createTutorial(data: InsertTutorial) {
+export async function createTutorial(tutorial: InsertTutorial) {
   const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  const [result] = await db.insert(tutorials).values(data).$returningId();
-  return result;
-}
+  if (!db) throw new Error("Database not connected");
 
-export async function getPublishedTutorials() {
-  const db = await getDb();
-  if (!db) return [];
-  return db
-    .select({
-      id: tutorials.id,
-      title: tutorials.title,
-      category: tutorials.category,
-      description: tutorials.description,
-      tokenPrice: tutorials.tokenPrice,
-      demoVideoUrl: tutorials.demoVideoUrl,
-      tutorialVideoUrl: tutorials.tutorialVideoUrl,
-      isPublished: tutorials.isPublished,
-      createdAt: tutorials.createdAt,
-      creatorId: tutorials.creatorId,
-      creatorName: users.name,
-    })
-    .from(tutorials)
-    .leftJoin(users, eq(tutorials.creatorId, users.id))
-    .where(eq(tutorials.isPublished, true))
-    .orderBy(desc(tutorials.createdAt));
-}
-
-export async function getAllTutorials() {
-  const db = await getDb();
-  if (!db) return [];
-  return db
-    .select({
-      id: tutorials.id,
-      title: tutorials.title,
-      category: tutorials.category,
-      tokenPrice: tutorials.tokenPrice,
-      demoVideoUrl: tutorials.demoVideoUrl,
-      tutorialVideoUrl: tutorials.tutorialVideoUrl,
-      isPublished: tutorials.isPublished,
-      createdAt: tutorials.createdAt,
-      creatorId: tutorials.creatorId,
-      creatorName: users.name,
-    })
-    .from(tutorials)
-    .leftJoin(users, eq(tutorials.creatorId, users.id))
-    .orderBy(desc(tutorials.createdAt));
+  const result = await db.insert(tutorials).values(tutorial).returning();
+  return result[0];
 }
 
 export async function getTutorialById(id: number) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db
-    .select({
-      id: tutorials.id,
-      title: tutorials.title,
-      category: tutorials.category,
-      description: tutorials.description,
-      tokenPrice: tutorials.tokenPrice,
-      demoVideoUrl: tutorials.demoVideoUrl,
-      tutorialVideoUrl: tutorials.tutorialVideoUrl,
-      isPublished: tutorials.isPublished,
-      createdAt: tutorials.createdAt,
-      creatorId: tutorials.creatorId,
-      creatorName: users.name,
-    })
-    .from(tutorials)
-    .leftJoin(users, eq(tutorials.creatorId, users.id))
-    .where(eq(tutorials.id, id))
-    .limit(1);
+  const result = await db.select().from(tutorials).where(eq(tutorials.id, id)).limit(1);
   return result[0];
-}
-
-export async function setTutorialPublished(id: number, isPublished: boolean) {
-  const db = await getDb();
-  if (!db) return;
-  await db.update(tutorials).set({ isPublished }).where(eq(tutorials.id, id));
 }
 
 export async function getTutorialsByCreator(creatorId: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(tutorials).where(eq(tutorials.creatorId, creatorId)).orderBy(desc(tutorials.createdAt));
+  return await db
+    .select()
+    .from(tutorials)
+    .where(eq(tutorials.creatorId, creatorId))
+    .orderBy(desc(tutorials.createdAt));
+}
+
+export async function getPublishedTutorials() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db
+    .select()
+    .from(tutorials)
+    .where(eq(tutorials.isPublished, true))
+    .orderBy(desc(tutorials.createdAt));
+}
+
+export async function getTutorialsByCategory(category: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db
+    .select()
+    .from(tutorials)
+    .where(eq(tutorials.category, category))
+    .orderBy(desc(tutorials.createdAt));
 }
 
 // ─── Chapters ─────────────────────────────────────────────────────────
 
-export async function createChapters(data: InsertChapter[]) {
+export async function createChapter(chapter: InsertChapter) {
   const db = await getDb();
-  if (!db) return;
-  if (data.length === 0) return;
-  await db.insert(chapters).values(data);
+  if (!db) throw new Error("Database not connected");
+
+  const result = await db.insert(chapters).values(chapter).returning();
+  return result[0];
 }
 
-export async function getChaptersByTutorial(tutorialId: number) {
+export async function getChaptersByTutorialId(tutorialId: number) {
   const db = await getDb();
   if (!db) return [];
-  return db
+  return await db
     .select()
     .from(chapters)
     .where(eq(chapters.tutorialId, tutorialId))
     .orderBy(chapters.sortOrder);
 }
 
-export async function deleteChaptersByTutorial(tutorialId: number) {
+export async function deleteChapter(chapterId: number) {
   const db = await getDb();
   if (!db) return;
-  await db.delete(chapters).where(eq(chapters.tutorialId, tutorialId));
+  await db.delete(chapters).where(eq(chapters.id, chapterId));
 }
 
 // ─── Unlocks ──────────────────────────────────────────────────────────
 
-export async function unlockTutorial(userId: number, tutorialId: number, tokensSpent: number) {
+export async function unlockTutorial(userId: number, tutorialId: number, tokensPaid: number) {
   const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  await db.insert(unlocks).values({ userId, tutorialId, tokensSpent });
-}
+  if (!db) throw new Error("Database not connected");
 
-export async function isUnlocked(userId: number, tutorialId: number): Promise<boolean> {
-  const db = await getDb();
-  if (!db) return false;
   const result = await db
-    .select({ id: unlocks.id })
-    .from(unlocks)
-    .where(and(eq(unlocks.userId, userId), eq(unlocks.tutorialId, tutorialId)))
-    .limit(1);
-  return result.length > 0;
+    .insert(unlocks)
+    .values({
+      userId,
+      tutorialId,
+      tokensPaid,
+    })
+    .returning();
+
+  return result[0];
 }
 
 export async function getUnlockedTutorials(userId: number) {
   const db = await getDb();
   if (!db) return [];
-  return db
-    .select({
-      id: tutorials.id,
-      title: tutorials.title,
-      category: tutorials.category,
-      tokenPrice: tutorials.tokenPrice,
-      demoVideoUrl: tutorials.demoVideoUrl,
-      tutorialVideoUrl: tutorials.tutorialVideoUrl,
-      creatorId: tutorials.creatorId,
-      creatorName: users.name,
-      unlockedAt: unlocks.unlockedAt,
-    })
-    .from(unlocks)
-    .innerJoin(tutorials, eq(unlocks.tutorialId, tutorials.id))
-    .leftJoin(users, eq(tutorials.creatorId, users.id))
-    .where(eq(unlocks.userId, userId))
-    .orderBy(desc(unlocks.unlockedAt));
+
+  const unlockedIds = await db.select({ tutorialId: unlocks.tutorialId }).from(unlocks).where(eq(unlocks.userId, userId));
+
+  if (unlockedIds.length === 0) return [];
+
+  const tutorialIds = unlockedIds.map((u) => u.tutorialId);
+  return await db
+    .select()
+    .from(tutorials)
+    .where((t) => tutorialIds.includes(t.id))
+    .orderBy(desc(tutorials.createdAt));
 }
 
-export async function getTotalUnlocks(): Promise<number> {
+export async function isUserTutorialUnlocked(userId: number, tutorialId: number): Promise<boolean> {
   const db = await getDb();
-  if (!db) return 0;
-  const result = await db.select({ count: sql<number>`count(*)` }).from(unlocks);
-  return Number(result[0]?.count ?? 0);
-}
+  if (!db) return false;
 
-export async function getTotalUsers(): Promise<number> {
-  const db = await getDb();
-  if (!db) return 0;
-  const result = await db.select({ count: sql<number>`count(*)` }).from(users);
-  return Number(result[0]?.count ?? 0);
-}
-
-export async function getTotalTokensConsumed(): Promise<number> {
-  const db = await getDb();
-  if (!db) return 0;
   const result = await db
-    .select({ total: sql<number>`COALESCE(SUM(ABS(amount)), 0)` })
-    .from(tokenTransactions)
-    .where(sql`amount < 0`);
-  return Number(result[0]?.total ?? 0);
+    .select()
+    .from(unlocks)
+    .where(eq(unlocks.userId, userId) && eq(unlocks.tutorialId, tutorialId))
+    .limit(1);
+
+  return result.length > 0;
 }
