@@ -2,10 +2,11 @@ import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
-import { Coins, Video, LogOut, ChevronRight, Shield, Plus } from "lucide-react";
+import { Coins, Video, LogOut, ChevronRight, Shield, Plus, Edit, Trash2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
+import { trpc } from "@/lib/trpc";
 
 export default function Profile() {
   const { isAuthenticated, user, logout } = useAuth();
@@ -14,6 +15,10 @@ export default function Profile() {
 
   const { data: tokenData, isLoading: tokenLoading } = trpc.tokens.getBalance.useQuery(undefined, {
     enabled: isAuthenticated,
+  });
+
+  const { data: myTutorials, isLoading: tutorialsLoading } = trpc.tutorials.myTutorials.useQuery(undefined, {
+    enabled: isAuthenticated && user?.isCreator,
   });
 
   const setCreatorMutation = trpc.users.setCreatorMode.useMutation({
@@ -120,6 +125,40 @@ export default function Profile() {
             </button>
           )}
         </div>
+
+        {/* My tutorials */}
+        {user?.isCreator && (
+          <div className="space-y-3">
+            <h3 className="text-sm font-bold text-foreground px-2">My Tutorials</h3>
+            {tutorialsLoading ? (
+              Array.from({ length: 2 }).map((_, i) => (
+                <Skeleton key={i} className="h-20 bg-muted rounded-xl" />
+              ))
+            ) : myTutorials && myTutorials.length > 0 ? (
+              myTutorials.map((tutorial) => (
+                <div key={tutorial.id} className="p-3 bg-card rounded-xl border border-border flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-foreground text-sm truncate">{tutorial.title}</p>
+                    <p className="text-muted-foreground text-xs">{tutorial.category} · {tutorial.tokenPrice} tokens</p>
+                  </div>
+                  <div className="flex items-center gap-2 ml-3">
+                    <button
+                      onClick={() => navigate(`/creator/edit/${tutorial.id}`)}
+                      className="p-2 hover:bg-primary/10 rounded-lg text-primary transition-colors"
+                      title="Edit tutorial"
+                    >
+                      <Edit size={16} />
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-6 text-muted-foreground text-sm">
+                No tutorials yet. Create your first one!
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Admin portal link */}
         {user?.role === "admin" && (

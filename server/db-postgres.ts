@@ -159,6 +159,18 @@ export async function getTutorialsByCategory(category: string) {
     .orderBy(desc(tutorials.createdAt));
 }
 
+export async function updateTutorial(id: number, updates: Partial<InsertTutorial>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not connected");
+
+  const result = await db
+    .update(tutorials)
+    .set(updates)
+    .where(eq(tutorials.id, id))
+    .returning();
+  return result[0];
+}
+
 // ─── Chapters ─────────────────────────────────────────────────────────
 
 export async function createChapter(chapter: InsertChapter) {
@@ -183,6 +195,12 @@ export async function deleteChapter(chapterId: number) {
   const db = await getDb();
   if (!db) return;
   await db.delete(chapters).where(eq(chapters.id, chapterId));
+}
+
+export async function deleteChaptersByTutorialId(tutorialId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(chapters).where(eq(chapters.tutorialId, tutorialId));
 }
 
 // ─── Unlocks ──────────────────────────────────────────────────────────

@@ -10,6 +10,7 @@ import Player from "./pages/Player";
 import Library from "./pages/Library";
 import Profile from "./pages/Profile";
 import CreatorUpload from "./pages/CreatorUpload";
+import CreatorEdit from "./pages/CreatorEdit";
 import AdminLayout from "./pages/admin/AdminLayout";
 import AdminUsers from "./pages/admin/AdminUsers";
 import AdminContent from "./pages/admin/AdminContent";
@@ -29,6 +30,7 @@ function MobileApp() {
           <Route path="/library" component={Library} />
           <Route path="/profile" component={Profile} />
           <Route path="/creator/upload" component={CreatorUpload} />
+          <Route path="/creator/edit/:id" component={CreatorEdit} />
           <Route component={NotFound} />
         </Switch>
       </div>

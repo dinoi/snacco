@@ -1,0 +1,38 @@
+    // Creator: update an existing tutorial
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        title: z.string().min(1),
+        category: z.string().min(1),
+        description: z.string().optional(),
+        tokenPrice: z.number().int().min(1).max(20),
+        demoVideoUrl: z.string(),
+        demoVideoKey: z.string(),
+        tutorialVideoUrl: z.string(),
+        tutorialVideoKey: z.string(),
+        chapters: z.array(z.object({
+          label: z.string().min(1),
+          timestampSeconds: z.number().int().min(0),
+          sortOrder: z.number().int(),
+        })),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const user = await getUserById(ctx.user.id);
+        if (!user?.isCreator) throw new TRPCError({ code: "FORBIDDEN", message: "Enable creator mode first" });
+
+        // Verify ownership
+        const tutorial = await db.getTutorialById(input.id);
+        if (!tutorial) throw new TRPCError({ code: "NOT_FOUND" });
+        if (tutorial.creatorId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "You can only edit your own tutorials" });
+
+        const { chapters: chapterData, ...tutorialData } = input;
+        await db.updateTutorial(input.id, tutorialData);
+
+        // Delete old chapters and create new ones
+        await db.deleteChaptersByTutorialId(input.id);
+        if (chapterData.length > 0) {
+          await db.createChapter(chapterData.map(c => ({ ...c, tutorialId: input.id })));
+        }
+
+        return { success: true, tutorialId: input.id };
+      }),
