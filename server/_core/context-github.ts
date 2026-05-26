@@ -2,7 +2,7 @@ import type { CreateExpressContextOptions } from "@trpc/server/adapters/express"
 import type { User } from "../../drizzle/schema-postgres";
 import { parse as parseCookieHeader } from "cookie";
 import { verifySessionToken } from "./github-oauth";
-import * as db from "../db-postgres";
+import * as db from "../db";
 
 const COOKIE_NAME = "session_token";
 
