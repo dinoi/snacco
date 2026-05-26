@@ -163,7 +163,7 @@ export default defineConfig({
   },
   envDir: path.resolve(import.meta.dirname),
   define: {
-    'import.meta.env.VITE_GITHUB_CLIENT_ID': JSON.stringify(process.env.VITE_GITHUB_CLIENT_ID || ''),
+    'import.meta.env.VITE_GITHUB_CLIENT_ID': JSON.stringify(process.env.GITHUB_CLIENT_ID || ''),
   },
   root: path.resolve(import.meta.dirname, "client"),
   publicDir: path.resolve(import.meta.dirname, "client", "public"),
