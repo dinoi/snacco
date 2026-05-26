@@ -2,6 +2,7 @@ export const COOKIE_NAME = "session_token";
 export const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 
 // Generate GitHub login URL at runtime so redirect URI reflects the current origin.
+// Force redeploy: v2
 export const getLoginUrl = (returnPath?: string) => {
   const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID;
   const redirectUri = `${window.location.origin}/api/oauth/callback`;
