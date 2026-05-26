@@ -1,41 +1,55 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 interface BuildInfo {
+  version: string;
   color: string;
   colorName: string;
   timestamp: string;
 }
 
+const defaultBuildInfo: BuildInfo = {
+  version: 'v1.24',
+  color: '#0000FF',
+  colorName: 'blue',
+  timestamp: new Date().toISOString()
+};
+
 export function useBuildColor() {
+  const [buildInfo, setBuildInfo] = useState<BuildInfo>(defaultBuildInfo);
+
   useEffect(() => {
-    async function loadBuildColor() {
+    async function loadBuildInfo() {
       try {
-        const response = await fetch('/__manus__/build-color.json');
+        const response = await fetch('/__manus__/build-info.json');
         if (!response.ok) {
-          console.warn('[Build Color] Failed to load build color');
+          console.warn('[Build Info] Failed to load build info');
           return;
         }
 
-        const buildInfo: BuildInfo = await response.json();
+        const info: BuildInfo = await response.json();
+        setBuildInfo(info);
         
         // Apply color to logo/root element
         const root = document.documentElement;
-        root.style.setProperty('--build-color', buildInfo.color);
+        root.style.setProperty('--build-color', info.color);
         
         // Store in localStorage for comparison on next load
         const lastColor = localStorage.getItem('lastBuildColor');
-        if (lastColor && lastColor !== buildInfo.color) {
-          console.log(`[Build Color] New build detected! Color changed from ${lastColor} to ${buildInfo.color}`);
+        if (lastColor && lastColor !== info.color) {
+          console.log(`[Build Info] New build detected! ${lastColor} → ${info.color}`);
         }
-        localStorage.setItem('lastBuildColor', buildInfo.color);
-        localStorage.setItem('lastBuildTimestamp', buildInfo.timestamp);
+        localStorage.setItem('lastBuildColor', info.color);
+        localStorage.setItem('lastBuildVersion', info.version);
+        localStorage.setItem('lastBuildTimestamp', info.timestamp);
         
-        console.log(`[Build Color] Applied: ${buildInfo.colorName} (${buildInfo.color})`);
+        console.log(`[Build Info] Loaded: ${info.version} (${info.colorName})`);
       } catch (error) {
-        console.warn('[Build Color] Error loading build color:', error);
+        console.warn('[Build Info] Error loading build info:', error);
       }
     }
 
-    loadBuildColor();
+    loadBuildInfo();
   }, []);
+
+  return buildInfo;
 }
