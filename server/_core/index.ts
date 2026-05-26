@@ -2,13 +2,17 @@ import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
 import net from "net";
+import path from "path";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
+import type { Request, Response } from "express";
 import { registerGitHubOAuthRoutes } from "./github-oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context-github";
 import { serveStatic, setupVite } from "./vite";
 import { registerUploadRoute } from "../uploadRoute-railway";
 import { ENV } from "./env";
+import { getLocalFilePath } from "../railway-storage";
+import fs from "fs";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -45,6 +49,15 @@ async function startServer() {
   });
   registerGitHubOAuthRoutes(app);
   registerUploadRoute(app);
+  
+  // Serve local storage files
+  app.get("/api/storage/:path(*)", (req: Request, res: Response) => {
+    const filePath = getLocalFilePath(req.params.path);
+    if (!filePath) {
+      return res.status(404).json({ error: "File not found" });
+    }
+    res.sendFile(filePath);
+  });
   // tRPC API
   app.use(
     "/api/trpc",
