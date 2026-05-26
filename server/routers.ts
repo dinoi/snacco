@@ -8,6 +8,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db-postgres";
 import * as storage from "./railway-storage";
+import { getUserById, getAllTutorials, setTutorialPublished, getTotalUsers, getTotalUnlocks, getTotalTokensConsumed } from "./db";
 
 // ─── In-memory chunk registry ─────────────────────────────────────────────────
 // Tracks which chunks have been received for each upload session.
