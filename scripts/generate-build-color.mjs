@@ -16,7 +16,7 @@ const randomColor = colors[Math.floor(Math.random() * colors.length)];
 const buildTimestamp = new Date().toISOString();
 
 // Extract version from git tag or commit message
-let version = 'v1.24';
+let version = 'v1.25';
 try {
   const lastCommitMessage = execSync('git log -1 --pretty=%B', { cwd: path.join(__dirname, '..'), encoding: 'utf-8' }).trim();
   const versionMatch = lastCommitMessage.match(/v(\d+\.\d+(?:\.\d+)?)/);
@@ -24,7 +24,7 @@ try {
     version = `v${versionMatch[1]}`;
   }
 } catch (error) {
-  console.warn('Could not extract version from git, using default');
+  console.warn('Could not extract version from git, using default v1.25');
 }
 
 const buildInfo = {
