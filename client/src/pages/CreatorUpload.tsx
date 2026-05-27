@@ -64,42 +64,44 @@ function generateThumbnail(file: File): Promise<string | null> {
         canvas.height = height;
         const ctx = canvas.getContext("2d");
         if (!ctx) { cleanup(); resolve(null); return; }
-        ctx.fillStyle = "#000000";
-        ctx.fillRect(0, 0, width, height);
+        
+        // Only draw image if we have valid video dimensions
         if (video.videoWidth > 0 && video.videoHeight > 0) {
           ctx.drawImage(video, 0, 0, width, height);
+        } else {
+          // Fallback: black canvas only if we can't get video data
+          ctx.fillStyle = "#000000";
+          ctx.fillRect(0, 0, width, height);
         }
+        
         const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
         cleanup();
         resolve(dataUrl);
       } catch { cleanup(); resolve(null); }
     };
 
-    // Fallback timeout: if seeked never fires, capture on canplay (mobile fix)
+    // Fallback timeout: if nothing fires, capture anyway (mobile fix)
     const timeout = setTimeout(() => {
       if (!captureAttempted && video.readyState >= 2) {
         capture();
       }
-    }, 3000);
+    }, 1000);
 
     const clearTimeout_ = () => clearTimeout(timeout);
 
-    // Try to seek to 0.5s for better thumbnail, but capture immediately if seeking fails
-    const trySeek = () => {
-      if (!captureAttempted && video.currentTime === 0) {
-        try {
-          video.currentTime = 0.5;
-        } catch {
-          capture();
-        }
+    // Capture at first frame (time 0) instead of seeking
+    const tryCapture = () => {
+      if (!captureAttempted && video.readyState >= 2) {
+        clearTimeout_();
+        capture();
       }
     };
 
-    video.addEventListener("seeked", () => { clearTimeout_(); capture(); }, { once: true });
+    video.addEventListener("seeked", tryCapture, { once: true });
     video.addEventListener("error", () => { clearTimeout_(); cleanup(); resolve(null); }, { once: true });
-    video.addEventListener("loadeddata", trySeek, { once: true });
-    video.addEventListener("canplay", trySeek, { once: true });
-    video.addEventListener("play", () => { if (!captureAttempted) { clearTimeout_(); capture(); } }, { once: true });
+    video.addEventListener("loadeddata", tryCapture, { once: true });
+    video.addEventListener("canplay", tryCapture, { once: true });
+    video.addEventListener("play", tryCapture, { once: true });
     video.src = url;
     video.load();
   });

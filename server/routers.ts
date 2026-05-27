@@ -274,7 +274,7 @@ export const appRouter = router({
         if (!result?.id) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
 
         if (chapterData.length > 0) {
-          await db.createChapter(chapterData.map(c => ({ ...c, tutorialId: result.id })));
+          await db.createChapters(chapterData.map(c => ({ ...c, tutorialId: result.id })));
         }
 
         return { success: true, tutorialId: result.id };
@@ -313,7 +313,7 @@ export const appRouter = router({
         // Delete old chapters and create new ones
         await db.deleteChaptersByTutorialId(input.id);
         if (chapterData.length > 0) {
-          await db.createChapter(chapterData.map(c => ({ ...c, tutorialId: input.id })));
+          await db.createChapters(chapterData.map(c => ({ ...c, tutorialId: input.id })));
         }
 
         return { success: true, tutorialId: input.id };

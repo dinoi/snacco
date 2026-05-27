@@ -181,6 +181,15 @@ export async function createChapter(chapter: InsertChapter) {
   return result[0];
 }
 
+export async function createChapters(chapterList: InsertChapter[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not connected");
+  if (chapterList.length === 0) return [];
+
+  const result = await db.insert(chapters).values(chapterList).returning();
+  return result;
+}
+
 export async function getChaptersByTutorialId(tutorialId: number) {
   const db = await getDb();
   if (!db) return [];
