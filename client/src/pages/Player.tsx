@@ -15,7 +15,7 @@ import { cn, formatTime } from "@/lib/utils";
 import { toast } from "sonner";
 import { VersionBadge } from "@/components/VersionBadge";
 
-const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25] as const;
+const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5] as const;
 type Speed = (typeof SPEED_OPTIONS)[number];
 
 export default function Player() {
@@ -216,7 +216,7 @@ export default function Player() {
             {/* Progress bar */}
             <div className="space-y-1">
               <div
-                className="w-full h-1 bg-white/20 rounded-full overflow-hidden cursor-pointer"
+                className="relative w-full h-1 bg-white/20 rounded-full overflow-hidden cursor-pointer"
                 onClick={(e) => {
                   e.stopPropagation();
                   const rect = e.currentTarget.getBoundingClientRect();
@@ -232,6 +232,13 @@ export default function Player() {
                     background: "linear-gradient(90deg, oklch(0.65 0.30 340), oklch(0.55 0.28 15))",
                   }}
                 />
+                <div
+                  className="absolute top-1/2 w-0.5 h-3 bg-white rounded-full shadow-lg"
+                  style={{
+                    left: `${progressPercent}%`,
+                    transform: "translate(-50%, -50%)",
+                  }}
+                />
               </div>
               <div className="flex justify-between text-[10px] text-white/50 font-mono">
                 <span>{formatTime(currentTime)}</span>
@@ -245,9 +252,9 @@ export default function Player() {
                 <button
                   onClick={(e) => { e.stopPropagation(); prevChapter(); }}
                   disabled={activeChapter === 0}
-                  className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center disabled:opacity-30"
+                  className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center disabled:opacity-30 hover:bg-white/20 transition-colors"
                 >
-                  <ChevronLeft size={18} className="text-white" />
+                  <ChevronLeft size={20} className="text-white" />
                 </button>
                 <div className="flex-1 overflow-x-auto hide-scrollbar">
                   <div className="flex gap-2 min-w-max">
@@ -256,7 +263,7 @@ export default function Player() {
                         key={ch.id}
                         onClick={(e) => { e.stopPropagation(); goToChapter(i); }}
                         className={cn(
-                          "px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all",
+                          "px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all",
                           i === activeChapter
                             ? "bg-primary text-primary-foreground glow-pink"
                             : "bg-white/10 text-white/70 hover:bg-white/20"
@@ -270,9 +277,9 @@ export default function Player() {
                 <button
                   onClick={(e) => { e.stopPropagation(); nextChapter(); }}
                   disabled={activeChapter === (chapters.length - 1)}
-                  className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center disabled:opacity-30"
+                  className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center disabled:opacity-30 hover:bg-white/20 transition-colors"
                 >
-                  <ChevronRight size={18} className="text-white" />
+                  <ChevronRight size={20} className="text-white" />
                 </button>
               </div>
             )}

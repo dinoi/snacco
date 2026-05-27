@@ -101,11 +101,11 @@
 - [x] Improved thumbnail generation with multiple fallback event listeners (seeked, play, loadeddata, canplay, timeout)
 
 
-## Playback Controls Enhancement v1.40 (NEXT)
+## Playback Controls Enhancement v1.40
 
-- [ ] Add visual indicator line on scrubber showing current playback position
-- [ ] Add rewind button (10s back) to player controls
-- [ ] Add slow-motion toggle (0.5x, 0.75x, 1x, 1.25x, 1.5x speeds)
-- [ ] Add chapter navigation buttons (prev/next chapter)
-- [ ] Improve mobile touch targets for all controls
-- [ ] Test playback controls on both desktop and mobile
+- [x] Add visual indicator line on scrubber showing current playback position
+- [x] Add rewind button (10s back) to player controls
+- [x] Add slow-motion toggle (0.5x, 0.75x, 1x, 1.25x, 1.5x speeds)
+- [x] Add chapter navigation buttons (prev/next chapter)
+- [x] Improve mobile touch targets for all controls
+- [x] Test playback controls on both desktop and mobile
