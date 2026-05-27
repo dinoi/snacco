@@ -396,6 +396,27 @@ export default function CreatorEdit() {
         {/* ── Step 1: Meta ─────────────────────────────────────────── */}
         {step === "meta" && (
           <div className="space-y-4">
+            {/* Delete button at top */}
+            <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/30">
+              <button
+                onClick={handleDelete}
+                disabled={deleteMutation.isPending}
+                className="w-full py-2.5 rounded-lg text-sm font-bold border border-destructive/60 text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {deleteMutation.isPending ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={14} />
+                    Delete Tutorial
+                  </>
+                )}
+              </button>
+            </div>
+
             <div>
               <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">Title *</label>
               <input
@@ -756,23 +777,6 @@ export default function CreatorEdit() {
                   "Save Changes"
                 )}
               </Button>
-            </div>
-            
-            <div className="pt-4 border-t border-border">
-              <button
-                onClick={handleDelete}
-                disabled={deleteMutation.isPending}
-                className="w-full py-2.5 rounded-xl text-sm font-bold border border-destructive/60 text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
-              >
-                {deleteMutation.isPending ? (
-                  <>
-                    <Loader2 size={14} className="animate-spin mr-2 inline" />
-                    Deleting...
-                  </>
-                ) : (
-                  "Delete Tutorial"
-                )}
-              </button>
             </div>
           </div>
         )}
