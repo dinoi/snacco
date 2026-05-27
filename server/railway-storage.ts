@@ -58,8 +58,12 @@ export async function storagePutStream(
       });
 
       await client.send(command);
-      const url = `${ENV.railwayStoragePublicUrl}/${key}`;
-      console.log("[Storage] Successfully streamed to S3:", key);
+      // Use virtual-hosted-style URL: https://bucket.endpoint/key
+      const bucketName = ENV.railwayStorageBucket;
+      const endpoint = ENV.railwayStorageEndpoint || "https://t3.storageapi.dev";
+      const endpointHost = new URL(endpoint).hostname; // Extract hostname from endpoint
+      const url = `https://${bucketName}.${endpointHost}/${key}`;
+      console.log("[Storage] Successfully streamed to S3:", key, "URL:", url);
       return { key, url };
     } catch (error) {
       console.error("[Storage] S3 stream failed:", error instanceof Error ? error.message : String(error));
@@ -103,8 +107,12 @@ export async function storagePut(
       });
 
       await client.send(command);
-      const url = `${ENV.railwayStoragePublicUrl}/${key}`;
-      console.log("[Storage] Successfully uploaded to S3:", key);
+      // Use virtual-hosted-style URL: https://bucket.endpoint/key
+      const bucketName = ENV.railwayStorageBucket;
+      const endpoint = ENV.railwayStorageEndpoint || "https://t3.storageapi.dev";
+      const endpointHost = new URL(endpoint).hostname; // Extract hostname from endpoint
+      const url = `https://${bucketName}.${endpointHost}/${key}`;
+      console.log("[Storage] Successfully uploaded to S3:", key, "URL:", url);
       return { key, url };
     } catch (error) {
       console.error("[Storage] S3 upload failed, falling back to local storage:", error instanceof Error ? error.message : String(error));
