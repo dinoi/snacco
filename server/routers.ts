@@ -36,8 +36,7 @@ export const appRouter = router({
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
-      const cookieOptions = getSessionCookieOptions(ctx.req);
-      ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+      ctx.res.clearCookie(COOKIE_NAME, { httpOnly: true, secure: true, sameSite: 'lax', maxAge: -1 });
       return { success: true } as const;
     }),
   }),
@@ -45,7 +44,7 @@ export const appRouter = router({
   // ─── Tokens ─────────────────────────────────────────────────────────
   tokens: router({
     getBalance: protectedProcedure.query(async ({ ctx }) => {
-      const user = await getUserById(ctx.user.id);
+      const user = await db.getUserById(ctx.user.id);
       return { balance: user?.tokenBalance ?? 0 };
     }),
 
@@ -57,13 +56,12 @@ export const appRouter = router({
     adminAdjust: adminProcedure
       .input(z.object({ userId: z.number(), amount: z.number(), reason: z.string().min(1) }))
       .mutation(async ({ ctx, input }) => {
-        await db.adjustTokens(input.userId, input.amount, input.reason, ctx.user.id);
+        await db.adjustTokens(input.userId, input.amount, input.reason);
         return { success: true };
       }),
 
     // Admin: get all transactions
     adminGetAll: adminProcedure.query(async () => {
-      const db = await import("./db");
       return db.getAllTokenTransactions();
     }),
   }),
@@ -130,7 +128,7 @@ export const appRouter = router({
         const tutorial = await db.getTutorialById(input.tutorialId);
         if (!tutorial || !tutorial.isPublished) throw new TRPCError({ code: "NOT_FOUND" });
 
-        const user = await getUserById(ctx.user.id);
+        const user = await db.getUserById(ctx.user.id);
         if (!user) throw new TRPCError({ code: "UNAUTHORIZED" });
         if (user.tokenBalance < tutorial.tokenPrice) {
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Insufficient tokens" });
@@ -266,7 +264,7 @@ export const appRouter = router({
         })),
       }))
       .mutation(async ({ ctx, input }) => {
-        const user = await getUserById(ctx.user.id);
+        const user = await db.getUserById(ctx.user.id);
         if (!user?.isCreator) throw new TRPCError({ code: "FORBIDDEN", message: "Enable creator mode first" });
 
         const { chapters: chapterData, ...tutorialData } = input;
@@ -299,7 +297,7 @@ export const appRouter = router({
         })),
       }))
       .mutation(async ({ ctx, input }) => {
-        const user = await getUserById(ctx.user.id);
+        const user = await db.getUserById(ctx.user.id);
         if (!user?.isCreator) throw new TRPCError({ code: "FORBIDDEN", message: "Enable creator mode first" });
 
         // Verify ownership
@@ -323,7 +321,7 @@ export const appRouter = router({
     delete: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ ctx, input }) => {
-        const user = await getUserById(ctx.user.id);
+        const user = await db.getUserById(ctx.user.id);
         if (!user?.isCreator) throw new TRPCError({ code: "FORBIDDEN", message: "Enable creator mode first" });
 
         // Verify ownership
@@ -342,7 +340,7 @@ export const appRouter = router({
 
     // Admin: list all tutorials
     adminList: adminProcedure.query(async () => {
-      return getAllTutorials();
+      return db.getAllTutorials();
     }),
 
     // Admin: toggle publish status

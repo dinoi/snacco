@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, inArray } from "drizzle-orm";
 import {
   chapters,
   InsertChapter,
@@ -215,7 +215,7 @@ export async function getUnlockedTutorials(userId: number) {
   return await db
     .select()
     .from(tutorials)
-    .where((t) => tutorialIds.includes(t.id))
+    .where(inArray(tutorials.id, tutorialIds))
     .orderBy(desc(tutorials.createdAt));
 }
 

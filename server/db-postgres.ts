@@ -312,3 +312,9 @@ export async function getTotalTokensConsumed() {
     .where((t) => t.amount < 0); // Only count debits
   return Math.abs(result.reduce((sum, t) => sum + (t.amount || 0), 0));
 }
+
+export async function getAllTutorials() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(tutorials).orderBy(desc(tutorials.createdAt));
+}
