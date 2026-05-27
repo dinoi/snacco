@@ -66,12 +66,11 @@ export function registerUploadRoute(app: Express) {
           return res.status(400).json({ error: "type must be 'demo' or 'tutorial'" });
         }
 
-        // Read file from disk and upload to Railway Object Storage
-        const fileBuffer = fs.readFileSync(tmpPath);
+        // Stream file directly to Railway Object Storage (avoid buffering large files)
         const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
         const key = `videos/${user.id}/${type}/${Date.now()}_${safeName}`;
 
-        const { key: storedKey, url } = await storage.storagePut(key, fileBuffer, file.mimetype || "video/mp4");
+        const { key: storedKey, url } = await storage.storagePutStream(key, tmpPath, file.mimetype || "video/mp4");
 
         return res.json({ key: storedKey, url });
       } catch (err: any) {
