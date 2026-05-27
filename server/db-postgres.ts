@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, lt } from "drizzle-orm";
 import {
   chapters,
   InsertChapter,
@@ -248,7 +248,7 @@ export async function getUnlockedTutorials(userId: number) {
   return await db
     .select()
     .from(tutorials)
-    .where((t) => tutorialIds.includes(t.id))
+    .where(inArray(tutorials.id, tutorialIds))
     .orderBy(desc(tutorials.createdAt));
 }
 
@@ -309,7 +309,7 @@ export async function getTotalTokensConsumed() {
   const result = await db
     .select()
     .from(tokenTransactions)
-    .where((t) => t.amount < 0); // Only count debits
+    .where(lt(tokenTransactions.amount, 0)); // Only count debits
   return Math.abs(result.reduce((sum, t) => sum + (t.amount || 0), 0));
 }
 
