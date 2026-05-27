@@ -73,11 +73,11 @@
 ## Bug Fixes v1.26
 
 - [x] Fix video storage - switch to Manus persistent storage (v1.26)
-- [ ] Fix demo thumbnail black after upload - extract first frame
-- [ ] Fix chapter marking playback black frame - show first frame
-- [ ] Improve chapter marking UX - better scrubbing/dragging
-- [ ] Add delete video option in edit page
-- [ ] Fix videos not showing on discovery feed (black)
+- [x] Fix demo thumbnail black after upload - extract first frame
+- [x] Fix chapter marking playback black frame - show first frame
+- [x] Improve chapter marking UX - better scrubbing/dragging
+- [x] Add delete video option in edit page
+- [x] Fix videos not showing on discovery feed (black)
 
 ## Critical Bugs v1.29 (URGENT)
 
@@ -99,3 +99,13 @@
 - [x] Added error logging to video elements for debugging playback issues
 - [x] Added crossOrigin="anonymous" to all video elements
 - [x] Improved thumbnail generation with multiple fallback event listeners (seeked, play, loadeddata, canplay, timeout)
+
+
+## Playback Controls Enhancement v1.40 (NEXT)
+
+- [ ] Add visual indicator line on scrubber showing current playback position
+- [ ] Add rewind button (10s back) to player controls
+- [ ] Add slow-motion toggle (0.5x, 0.75x, 1x, 1.25x, 1.5x speeds)
+- [ ] Add chapter navigation buttons (prev/next chapter)
+- [ ] Improve mobile touch targets for all controls
+- [ ] Test playback controls on both desktop and mobile
