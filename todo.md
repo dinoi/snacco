@@ -85,3 +85,10 @@
 - [x] **Chapter marker video black & won't play** - Use localUrl instead of remote URL, added poster attribute, changed preload to auto
 - [x] **Back button loses all data** - Back button now navigates to previous step, only goes to Profile if on first step
 - [x] **Thumbnail extraction** - First frame captured immediately via canvas, displayed as poster while video loads
+
+## Post-v1.29 Issues (Still Failing)
+
+- [ ] **Desktop upload 502 error** - Tutorial upload fails on desktop, need to debug upload endpoint
+- [ ] **Mobile demo thumbnail still missing** - Fallback timeout not working on mobile, need alternative approach
+- [ ] **Video scrubbing too difficult** - Timeline needs better touch/drag UX for precise chapter marking
+- [ ] **Feed video playback black** - Videos on discovery feed still show black frames, need to check Feed.tsx

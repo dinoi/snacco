@@ -64,8 +64,9 @@ export default function Feed() {
                 muted
                 loop
                 playsInline
-                preload="metadata"
+                preload="auto"
                 crossOrigin="anonymous"
+                autoPlay
                 onMouseEnter={e => (e.currentTarget as HTMLVideoElement).play()}
               />
               {/* Gradient overlay */}

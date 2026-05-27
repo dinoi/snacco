@@ -74,14 +74,26 @@ function generateThumbnail(file: File): Promise<string | null> {
       if (!captureAttempted && video.readyState >= 2) {
         capture();
       }
-    }, 2000);
+    }, 3000);
 
     const clearTimeout_ = () => clearTimeout(timeout);
 
+    // Try to seek to 0.5s for better thumbnail, but capture immediately if seeking fails
+    const trySeek = () => {
+      if (!captureAttempted && video.currentTime === 0) {
+        try {
+          video.currentTime = 0.5;
+        } catch {
+          capture();
+        }
+      }
+    };
+
     video.addEventListener("seeked", () => { clearTimeout_(); capture(); }, { once: true });
     video.addEventListener("error", () => { clearTimeout_(); cleanup(); resolve(null); }, { once: true });
-    video.addEventListener("loadeddata", () => { video.currentTime = 0.5; }, { once: true });
-    video.addEventListener("canplay", () => { video.currentTime = 0.5; }, { once: true });
+    video.addEventListener("loadeddata", trySeek, { once: true });
+    video.addEventListener("canplay", trySeek, { once: true });
+    video.addEventListener("play", () => { if (!captureAttempted) { clearTimeout_(); capture(); } }, { once: true });
     video.src = url;
     video.load();
   });
@@ -653,7 +665,7 @@ export default function CreatorUpload() {
                   {/* Draggable scrubber handle */}
                   {duration > 0 && (
                     <div
-                      className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-white border-2 border-primary cursor-grab active:cursor-grabbing shadow-lg hover:w-6 hover:h-6 transition-all"
+                      className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-7 h-7 rounded-full bg-white border-2 border-primary cursor-grab active:cursor-grabbing shadow-lg hover:w-8 hover:h-8 transition-all"
                       style={{ left: `${(currentTime / duration) * 100}%` }}
                       onMouseDown={(e) => {
                         if (!tutorialVideoRef.current || duration === 0) return;

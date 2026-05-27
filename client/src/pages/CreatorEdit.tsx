@@ -76,14 +76,26 @@ function generateThumbnail(file: File): Promise<string | null> {
       if (!captureAttempted && video.readyState >= 2) {
         capture();
       }
-    }, 2000);
+    }, 3000);
 
     const clearTimeout_ = () => clearTimeout(timeout);
 
+    // Try to seek to 0.5s for better thumbnail, but capture immediately if seeking fails
+    const trySeek = () => {
+      if (!captureAttempted && video.currentTime === 0) {
+        try {
+          video.currentTime = 0.5;
+        } catch {
+          capture();
+        }
+      }
+    };
+
     video.addEventListener("seeked", () => { clearTimeout_(); capture(); }, { once: true });
     video.addEventListener("error", () => { clearTimeout_(); cleanup(); resolve(null); }, { once: true });
-    video.addEventListener("loadeddata", () => { video.currentTime = 0.5; }, { once: true });
-    video.addEventListener("canplay", () => { video.currentTime = 0.5; }, { once: true });
+    video.addEventListener("loadeddata", trySeek, { once: true });
+    video.addEventListener("canplay", trySeek, { once: true });
+    video.addEventListener("play", () => { if (!captureAttempted) { clearTimeout_(); capture(); } }, { once: true });
     video.src = url;
     video.load();
   });
