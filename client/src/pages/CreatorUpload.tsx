@@ -58,11 +58,17 @@ function generateThumbnail(file: File): Promise<string | null> {
       captureAttempted = true;
       try {
         const canvas = document.createElement("canvas");
-        canvas.width = video.videoWidth || 320;
-        canvas.height = video.videoHeight || 568;
+        const width = video.videoWidth > 0 ? video.videoWidth : 320;
+        const height = video.videoHeight > 0 ? video.videoHeight : 180;
+        canvas.width = width;
+        canvas.height = height;
         const ctx = canvas.getContext("2d");
         if (!ctx) { cleanup(); resolve(null); return; }
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(0, 0, width, height);
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+          ctx.drawImage(video, 0, 0, width, height);
+        }
         const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
         cleanup();
         resolve(dataUrl);
@@ -675,15 +681,15 @@ export default function CreatorUpload() {
                   {/* Draggable scrubber handle */}
                   {duration > 0 && (
                     <div
-                      className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-7 h-7 rounded-full bg-white border-2 border-primary cursor-grab active:cursor-grabbing shadow-lg hover:w-8 hover:h-8 transition-all"
+                      className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-6 h-6 rounded-full bg-white border-2 border-primary cursor-grab active:cursor-grabbing shadow-lg hover:w-7 hover:h-7 transition-all"
                       style={{ left: `${(currentTime / duration) * 100}%` }}
                       onMouseDown={(e) => {
                         if (!tutorialVideoRef.current || duration === 0) return;
                         e.preventDefault();
+                        const parentRect = (e.currentTarget as HTMLDivElement).parentElement?.getBoundingClientRect();
+                        if (!parentRect) return;
                         const handleMouseMove = (moveEvent: MouseEvent) => {
-                          const rect = (e.currentTarget as HTMLDivElement).parentElement?.getBoundingClientRect();
-                          if (!rect) return;
-                          const newTime = Math.max(0, Math.min((moveEvent.clientX - rect.left) / rect.width * duration, duration));
+                          const newTime = Math.max(0, Math.min((moveEvent.clientX - parentRect.left) / parentRect.width * duration, duration));
                           tutorialVideoRef.current!.currentTime = newTime;
                         };
                         const handleMouseUp = () => {
@@ -695,10 +701,11 @@ export default function CreatorUpload() {
                       }}
                       onTouchStart={(e) => {
                         if (!tutorialVideoRef.current || duration === 0) return;
+                        e.preventDefault();
+                        const parentRect = (e.currentTarget as HTMLDivElement).parentElement?.getBoundingClientRect();
+                        if (!parentRect) return;
                         const handleTouchMove = (moveEvent: TouchEvent) => {
-                          const rect = (e.currentTarget as HTMLDivElement).parentElement?.getBoundingClientRect();
-                          if (!rect) return;
-                          const newTime = Math.max(0, Math.min((moveEvent.touches[0].clientX - rect.left) / rect.width * duration, duration));
+                          const newTime = Math.max(0, Math.min((moveEvent.touches[0].clientX - parentRect.left) / parentRect.width * duration, duration));
                           tutorialVideoRef.current!.currentTime = newTime;
                         };
                         const handleTouchEnd = () => {
