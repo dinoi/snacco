@@ -25,6 +25,7 @@ export default function Player() {
   const { isAuthenticated } = useAuth();
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const progressBarRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -32,6 +33,7 @@ export default function Player() {
   const [activeChapter, setActiveChapter] = useState(0);
   const [showControls, setShowControls] = useState(true);
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const hideControlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: tutorial } = trpc.tutorials.get.useQuery({ id: tutorialId });
@@ -73,6 +75,46 @@ export default function Player() {
     resetHideTimer();
     return () => { if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current); };
   }, [resetHideTimer]);
+
+  // Handle scrubbing (both click and drag)
+  const handleScrub = useCallback((clientX: number) => {
+    if (!progressBarRef.current || !videoRef.current) return;
+    const rect = progressBarRef.current.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    videoRef.current.currentTime = pct * duration;
+  }, [duration]);
+
+  // Mouse/touch drag handlers
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      handleScrub(e.clientX);
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length > 0) {
+        handleScrub(e.touches[0].clientX);
+      }
+    };
+
+    const handleEnd = () => {
+      setIsDragging(false);
+      resetHideTimer();
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("touchmove", handleTouchMove);
+    document.addEventListener("mouseup", handleEnd);
+    document.addEventListener("touchend", handleEnd);
+
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("touchmove", handleTouchMove);
+      document.removeEventListener("mouseup", handleEnd);
+      document.removeEventListener("touchend", handleEnd);
+    };
+  }, [isDragging, handleScrub, resetHideTimer]);
 
   const togglePlay = () => {
     const v = videoRef.current;
@@ -216,12 +258,23 @@ export default function Player() {
             {/* Progress bar */}
             <div className="space-y-1">
               <div
-                className="relative w-full h-1 bg-white/20 rounded-full overflow-hidden cursor-pointer"
+                ref={progressBarRef}
+                className="relative w-full h-2 bg-white/20 rounded-full overflow-hidden cursor-pointer group"
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  setIsDragging(true);
+                  handleScrub(e.clientX);
+                }}
+                onTouchStart={(e) => {
+                  e.stopPropagation();
+                  setIsDragging(true);
+                  if (e.touches.length > 0) {
+                    handleScrub(e.touches[0].clientX);
+                  }
+                }}
                 onClick={(e) => {
                   e.stopPropagation();
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const pct = (e.clientX - rect.left) / rect.width;
-                  if (videoRef.current) videoRef.current.currentTime = pct * duration;
+                  handleScrub(e.clientX);
                   resetHideTimer();
                 }}
               >
@@ -233,10 +286,12 @@ export default function Player() {
                   }}
                 />
                 <div
-                  className="absolute top-1/2 w-0.5 h-3 bg-white rounded-full shadow-lg"
+                  className="absolute top-1/2 w-1 h-4 bg-white rounded-full shadow-lg transition-all"
                   style={{
                     left: `${progressPercent}%`,
                     transform: "translate(-50%, -50%)",
+                    opacity: isDragging ? 1 : 0.8,
+                    width: isDragging ? "12px" : "4px",
                   }}
                 />
               </div>

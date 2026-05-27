@@ -54,6 +54,7 @@ export async function upsertUser(user: InsertUser) {
     const result = await db
       .insert(users)
       .values({
+        openId: user.openId,
         githubId: user.githubId,
         name: user.name,
         email: user.email,

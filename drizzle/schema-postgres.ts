@@ -17,7 +17,8 @@ export const users = pgTable(
   "users",
   {
     id: serial("id").primaryKey(),
-    githubId: varchar("github_id", { length: 64 }).notNull().unique(),
+    openId: varchar("open_id", { length: 64 }).notNull().unique(),
+    githubId: varchar("github_id", { length: 64 }).notNull(),
     name: text("name"),
     email: varchar("email", { length: 320 }),
     loginMethod: varchar("login_method", { length: 64 }).notNull().default("github"),
@@ -28,9 +29,7 @@ export const users = pgTable(
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
     lastSignedIn: timestamp("last_signed_in").notNull().defaultNow(),
   },
-  (table) => ({
-    githubIdUnique: unique("users_github_id_unique").on(table.githubId),
-  })
+  (table) => ({})
 );
 
 export type User = typeof users.$inferSelect;

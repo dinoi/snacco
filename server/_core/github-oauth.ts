@@ -91,7 +91,7 @@ export function registerGitHubOAuthRoutes(app: Express) {
       };
 
       // Get email if not in user info
-      let email = userInfo.email;
+      let email: string | null = userInfo.email || null;
       if (!email) {
         const emailResponse = await fetch("https://api.github.com/user/emails", {
           headers: {
@@ -109,7 +109,9 @@ export function registerGitHubOAuthRoutes(app: Express) {
 
       // Upsert user in database
       const githubId = `github_${userInfo.id}`;
+      const openId = `github_${userInfo.id}`;
       const user = await db.upsertUser({
+        openId,
         githubId,
         name: userInfo.name || userInfo.login,
         email: email || null,

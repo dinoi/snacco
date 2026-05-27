@@ -36,6 +36,7 @@ export async function upsertUser(user: InsertUser) {
   if (!db) throw new Error("Database not connected");
 
   if (!user.githubId) throw new Error("User githubId is required for upsert");
+  if (!user.openId) throw new Error("User openId is required for upsert");
 
   // Check if user exists
   const existing = await db.select().from(users).where(eq(users.githubId, user.githubId)).limit(1);
@@ -54,6 +55,7 @@ export async function upsertUser(user: InsertUser) {
     const result = await db
       .insert(users)
       .values({
+        openId: user.openId,
         githubId: user.githubId,
         name: user.name,
         email: user.email,
@@ -76,11 +78,24 @@ export async function getUserByGithubId(githubId: string) {
   return result[0];
 }
 
+export async function getUserByOpenId(openId: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
+  return result[0];
+}
+
 export async function getUserById(id: number) {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
   return result[0];
+}
+
+export async function getAllUsers() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(users).orderBy(desc(users.createdAt));
 }
 
 // ─── Creator Mode ─────────────────────────────────────────────────────

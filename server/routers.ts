@@ -76,7 +76,7 @@ export const appRouter = router({
 
     // Admin
     adminList: adminProcedure.query(async () => {
-      return db.getPublishedTutorials();
+      return db.getAllUsers();
     }),
 
     adminGetTokenHistory: adminProcedure
