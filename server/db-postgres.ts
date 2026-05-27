@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { eq, desc, and, lt } from "drizzle-orm";
+import { eq, desc, and, lt, inArray } from "drizzle-orm";
 import {
   chapters,
   InsertChapter,
