@@ -39,6 +39,44 @@ function appendHashSuffix(relKey: string): string {
   return `${relKey.slice(0, lastDot)}_${hash}${relKey.slice(lastDot)}`;
 }
 
+export async function storagePutStream(
+  relKey: string,
+  filePath: string,
+  contentType = "application/octet-stream"
+): Promise<{ key: string; url: string }> {
+  const key = appendHashSuffix(relKey);
+
+  if (ENV.railwayStorageEndpoint && ENV.railwayAccessKeyId && ENV.railwaySecretAccessKey) {
+    try {
+      const client = getS3Client();
+      const fileStream = fs.createReadStream(filePath);
+      const command = new PutObjectCommand({
+        Bucket: ENV.railwayStorageBucket,
+        Key: key,
+        Body: fileStream,
+        ContentType: contentType,
+      });
+
+      await client.send(command);
+      const url = `${ENV.railwayStoragePublicUrl}/${key}`;
+      console.log("[Storage] Successfully streamed to S3:", key);
+      return { key, url };
+    } catch (error) {
+      console.error("[Storage] S3 stream failed:", error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  console.log("[Storage] Using local fallback for:", key);
+  ensureLocalStorageDir();
+  const localPath = path.join(LOCAL_STORAGE_DIR, key);
+  const localDir = path.dirname(localPath);
+  if (!fs.existsSync(localDir)) {
+    fs.mkdirSync(localDir, { recursive: true });
+  }
+  fs.copyFileSync(filePath, localPath);
+  return { key, url: `/api/storage/${key}` };
+}
+
 export async function storagePut(
   relKey: string,
   data: Buffer | Uint8Array | string,

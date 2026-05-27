@@ -5,6 +5,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBuildColor } from "@/hooks/useBuildColor";
+import { VersionBadge } from "@/components/VersionBadge";
 
 export default function Feed() {
   const { data: tutorials, isLoading } = trpc.tutorials.feed.useQuery();
@@ -18,8 +19,8 @@ export default function Feed() {
       <header className="sticky top-0 z-40 bg-background/90 backdrop-blur-md border-b border-border px-4 py-3 flex items-center justify-between safe-top">
         <div className="flex items-baseline gap-2">
           <h1 className="text-2xl font-black gradient-text tracking-tight">snacco</h1>
-          <span className="text-[10px] font-mono text-gray-500 border border-gray-700 rounded px-1 py-0.5 leading-none" style={{ borderColor: buildInfo.color, color: buildInfo.color }}>{buildInfo.version}</span>
         </div>
+        <VersionBadge />
         {!isAuthenticated && (
           <a
             href={getLoginUrl()}
@@ -63,7 +64,9 @@ export default function Feed() {
                 muted
                 loop
                 playsInline
-                preload="metadata"
+                preload="auto"
+                crossOrigin="anonymous"
+                autoPlay
                 onMouseEnter={e => (e.currentTarget as HTMLVideoElement).play()}
               />
               {/* Gradient overlay */}
