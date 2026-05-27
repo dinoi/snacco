@@ -459,7 +459,7 @@ export default function CreatorUpload() {
             {demoVideo && !uploading && (
               <div className="space-y-3">
                 <div className="relative w-full h-48 rounded-2xl overflow-hidden bg-black">
-                  <video src={demoVideo.url} className="w-full h-full object-cover" muted loop playsInline autoPlay preload="metadata" />
+                  <video src={demoVideo.url} className="w-full h-full object-cover" muted loop playsInline autoPlay preload="metadata" crossOrigin="anonymous" />
                   <div className="absolute top-3 left-3 bg-black/60 rounded-full px-2.5 py-1 flex items-center gap-1.5">
                     <CheckCircle size={12} className="text-green-400" />
                     <span className="text-white text-xs font-semibold">Demo Clip · {formatTime(demoVideo.duration)}</span>
@@ -551,7 +551,7 @@ export default function CreatorUpload() {
             {tutorialVideo && !uploading && (
               <div className="space-y-3">
                 <div className="relative w-full h-48 rounded-2xl overflow-hidden bg-black">
-                  <video src={tutorialVideo.url} className="w-full h-full object-cover" muted loop playsInline autoPlay preload="metadata" />
+                  <video src={tutorialVideo.url} className="w-full h-full object-cover" muted loop playsInline autoPlay preload="metadata" crossOrigin="anonymous" />
                   <div className="absolute top-3 left-3 bg-black/60 rounded-full px-2.5 py-1 flex items-center gap-1.5">
                     <CheckCircle size={12} className="text-green-400" />
                     <span className="text-white text-xs font-semibold">Tutorial · {formatTime(tutorialVideo.duration)}</span>
@@ -588,6 +588,7 @@ export default function CreatorUpload() {
                 className="w-full h-full object-contain"
                 playsInline
                 preload="metadata"
+                crossOrigin="anonymous"
                 onTimeUpdate={() => setCurrentTime(tutorialVideoRef.current?.currentTime ?? 0)}
                 onLoadedMetadata={() => setDuration(tutorialVideoRef.current?.duration ?? 0)}
                 onPlay={() => setIsPlaying(true)}
