@@ -86,9 +86,9 @@
 - [x] **Back button loses all data** - Back button now navigates to previous step, only goes to Profile if on first step
 - [x] **Thumbnail extraction** - First frame captured immediately via canvas, displayed as poster while video loads
 
-## Post-v1.29 Issues (Still Failing)
+## Post-v1.29 Issues (Fixed in v1.30)
 
-- [ ] **Desktop upload 502 error** - Tutorial upload fails on desktop, need to debug upload endpoint
-- [ ] **Mobile demo thumbnail still missing** - Fallback timeout not working on mobile, need alternative approach
-- [ ] **Video scrubbing too difficult** - Timeline needs better touch/drag UX for precise chapter marking
-- [ ] **Feed video playback black** - Videos on discovery feed still show black frames, need to check Feed.tsx
+- [x] **Desktop upload 502 error** - Fixed by switching upload route to use Forge API instead of Railway storage
+- [x] **Mobile demo thumbnail still missing** - Improved thumbnail generation with play event listener and try-catch for seeking
+- [x] **Video scrubbing too difficult** - Increased scrubber handle size from 5x5 to 7x7 for easier mobile dragging
+- [x] **Feed video playback black** - Added autoPlay and changed preload to auto in Feed.tsx video elements

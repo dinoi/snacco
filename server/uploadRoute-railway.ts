@@ -5,7 +5,7 @@ import os from "os";
 import { parse as parseCookieHeader } from "cookie";
 import { verifySessionToken } from "./_core/github-oauth";
 import * as db from "./db-postgres";
-import { storagePut } from "./storage";
+import * as storage from "./railway-storage";
 
 const COOKIE_NAME = "session_token";
 
@@ -66,12 +66,12 @@ export function registerUploadRoute(app: Express) {
           return res.status(400).json({ error: "type must be 'demo' or 'tutorial'" });
         }
 
-        // Read file from disk and upload to Manus Forge API (persistent storage)
+        // Read file from disk and upload to Railway Object Storage
         const fileBuffer = fs.readFileSync(tmpPath);
         const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
         const key = `videos/${user.id}/${type}/${Date.now()}_${safeName}`;
 
-        const { key: storedKey, url } = await storagePut(key, fileBuffer, file.mimetype || "video/mp4");
+        const { key: storedKey, url } = await storage.storagePut(key, fileBuffer, file.mimetype || "video/mp4");
 
         return res.json({ key: storedKey, url });
       } catch (err: any) {
