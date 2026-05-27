@@ -15,10 +15,6 @@ export const ENV = {
   railwayStorageBucket: process.env.AWS_S3_BUCKET_NAME ?? process.env.RAILWAY_STORAGE_BUCKET ?? "snacco",
   railwayStoragePublicUrl: process.env.RAILWAY_STORAGE_PUBLIC_URL ?? "",
 
-  // Manus Forge API (for persistent storage)
-  forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
-  forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
-
   // App
   isProduction: process.env.NODE_ENV === "production",
   port: parseInt(process.env.PORT ?? "3000", 10),

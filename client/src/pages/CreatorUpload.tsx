@@ -16,7 +16,6 @@ import {
 import { useState, useRef } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
-import { VersionBadge } from "@/components/VersionBadge";
 
 const DEMO_MAX_SECONDS = 30;
 const TUTORIAL_MAX_SECONDS = 300;
@@ -50,56 +49,26 @@ function generateThumbnail(file: File): Promise<string | null> {
     video.muted = true;
     video.playsInline = true;
     video.preload = "auto";
-    let captureAttempted = false;
     const cleanup = () => URL.revokeObjectURL(url);
 
     const capture = () => {
-      if (captureAttempted) return;
-      captureAttempted = true;
       try {
         const canvas = document.createElement("canvas");
-        const width = video.videoWidth > 0 ? video.videoWidth : 320;
-        const height = video.videoHeight > 0 ? video.videoHeight : 180;
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = video.videoWidth || 320;
+        canvas.height = video.videoHeight || 568;
         const ctx = canvas.getContext("2d");
         if (!ctx) { cleanup(); resolve(null); return; }
-        ctx.fillStyle = "#000000";
-        ctx.fillRect(0, 0, width, height);
-        if (video.videoWidth > 0 && video.videoHeight > 0) {
-          ctx.drawImage(video, 0, 0, width, height);
-        }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
         cleanup();
         resolve(dataUrl);
       } catch { cleanup(); resolve(null); }
     };
 
-    // Fallback timeout: if seeked never fires, capture on canplay (mobile fix)
-    const timeout = setTimeout(() => {
-      if (!captureAttempted && video.readyState >= 2) {
-        capture();
-      }
-    }, 3000);
-
-    const clearTimeout_ = () => clearTimeout(timeout);
-
-    // Try to seek to 0.5s for better thumbnail, but capture immediately if seeking fails
-    const trySeek = () => {
-      if (!captureAttempted && video.currentTime === 0) {
-        try {
-          video.currentTime = 0.5;
-        } catch {
-          capture();
-        }
-      }
-    };
-
-    video.addEventListener("seeked", () => { clearTimeout_(); capture(); }, { once: true });
-    video.addEventListener("error", () => { clearTimeout_(); cleanup(); resolve(null); }, { once: true });
-    video.addEventListener("loadeddata", trySeek, { once: true });
-    video.addEventListener("canplay", trySeek, { once: true });
-    video.addEventListener("play", () => { if (!captureAttempted) { clearTimeout_(); capture(); } }, { once: true });
+    video.addEventListener("seeked", capture, { once: true });
+    video.addEventListener("error", () => { cleanup(); resolve(null); }, { once: true });
+    video.addEventListener("loadeddata", () => { video.currentTime = 0.5; }, { once: true });
+    video.addEventListener("canplay", () => { video.currentTime = 0.5; }, { once: true });
     video.src = url;
     video.load();
   });
@@ -177,10 +146,6 @@ export default function CreatorUpload() {
 
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      const timeoutId = setTimeout(() => {
-        xhr.abort();
-        reject(new Error("Upload timeout - please check your connection and try again"));
-      }, 5 * 60 * 1000); // 5 minute timeout for large videos
 
       xhr.upload.addEventListener("progress", (e) => {
         if (e.lengthComputable) {
@@ -190,7 +155,6 @@ export default function CreatorUpload() {
       });
 
       xhr.addEventListener("load", () => {
-        clearTimeout(timeoutId);
         if (xhr.status === 200) {
           try {
             const result = JSON.parse(xhr.responseText);
@@ -213,12 +177,10 @@ export default function CreatorUpload() {
       });
 
       xhr.addEventListener("error", () => {
-        clearTimeout(timeoutId);
         reject(new Error("Network error during upload"));
       });
 
       xhr.addEventListener("abort", () => {
-        clearTimeout(timeoutId);
         reject(new Error("Upload cancelled"));
       });
 
@@ -276,10 +238,7 @@ export default function CreatorUpload() {
         setTimeout(() => setStep("chapters"), 400);
       }
     } catch (err: any) {
-      const errorMsg = err?.message ?? "Upload failed. Please try again.";
-      setUploadError(errorMsg);
-      toast.error(errorMsg);
-      console.error(`[Upload] ${type} upload failed:`, err);
+      setUploadError(err?.message ?? "Upload failed. Please try again.");
     } finally {
       setUploading(false);
       setUploadingType(null);
@@ -351,29 +310,16 @@ export default function CreatorUpload() {
     <div className="min-h-dvh bg-background flex flex-col">
       {/* Header */}
       <div className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b border-border px-4 pt-4 pb-3">
-        <div className="flex items-center justify-between gap-3 mb-3">
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={() => {
-                if (step === "meta") {
-                  navigate("/profile");
-                } else {
-                  const prevIdx = Math.max(0, STEPS.indexOf(step) - 1);
-                  setStep(STEPS[prevIdx]);
-                }
-              }} 
-              className="w-8 h-8 rounded-full bg-card flex items-center justify-center hover:bg-card/80 transition-colors"
-            >
-              <ChevronUp size={16} className="text-muted-foreground rotate-[-90deg]" />
-            </button>
-            <div>
-              <h1 className="text-base font-bold text-foreground">Upload Tutorial</h1>
-              <p className="text-xs text-muted-foreground">
-                {stepLabels[step]} · Step {Math.min(stepIdx + 1, STEPS.length)} of {STEPS.length}
-              </p>
-            </div>
+        <div className="flex items-center gap-3 mb-3">
+          <button onClick={() => navigate("/profile")} className="w-8 h-8 rounded-full bg-card flex items-center justify-center">
+            <ChevronUp size={16} className="text-muted-foreground rotate-[-90deg]" />
+          </button>
+          <div>
+            <h1 className="text-base font-bold text-foreground">Upload Tutorial</h1>
+            <p className="text-xs text-muted-foreground">
+              {stepLabels[step]} · Step {Math.min(stepIdx + 1, STEPS.length)} of {STEPS.length}
+            </p>
           </div>
-          <VersionBadge />
         </div>
         {/* Progress bar */}
         <div className="h-1 bg-border rounded-full overflow-hidden">
@@ -509,7 +455,7 @@ export default function CreatorUpload() {
             {demoVideo && !uploading && (
               <div className="space-y-3">
                 <div className="relative w-full h-48 rounded-2xl overflow-hidden bg-black">
-                  <video src={demoVideo.localUrl || demoVideo.url} poster={thumbnailDataUrl || undefined} className="w-full h-full object-cover" muted loop playsInline autoPlay preload="auto" crossOrigin="anonymous" />
+                  <video src={demoVideo.url} className="w-full h-full object-cover" muted loop playsInline autoPlay preload="metadata" />
                   <div className="absolute top-3 left-3 bg-black/60 rounded-full px-2.5 py-1 flex items-center gap-1.5">
                     <CheckCircle size={12} className="text-green-400" />
                     <span className="text-white text-xs font-semibold">Demo Clip · {formatTime(demoVideo.duration)}</span>
@@ -601,7 +547,7 @@ export default function CreatorUpload() {
             {tutorialVideo && !uploading && (
               <div className="space-y-3">
                 <div className="relative w-full h-48 rounded-2xl overflow-hidden bg-black">
-                  <video src={tutorialVideo.localUrl || tutorialVideo.url} poster={thumbnailDataUrl || undefined} className="w-full h-full object-cover" muted loop playsInline autoPlay preload="auto" crossOrigin="anonymous" />
+                  <video src={tutorialVideo.url} className="w-full h-full object-cover" muted loop playsInline autoPlay preload="metadata" />
                   <div className="absolute top-3 left-3 bg-black/60 rounded-full px-2.5 py-1 flex items-center gap-1.5">
                     <CheckCircle size={12} className="text-green-400" />
                     <span className="text-white text-xs font-semibold">Tutorial · {formatTime(tutorialVideo.duration)}</span>
@@ -634,12 +580,10 @@ export default function CreatorUpload() {
             <div className="relative w-full rounded-2xl overflow-hidden bg-black" style={{ aspectRatio: "9/16", maxHeight: "40vh" }}>
               <video
                 ref={tutorialVideoRef}
-                src={tutorialVideo.localUrl || tutorialVideo.url}
-                poster={thumbnailDataUrl || undefined}
+                src={tutorialVideo.url}
                 className="w-full h-full object-contain"
                 playsInline
-                preload="auto"
-                crossOrigin="anonymous"
+                preload="metadata"
                 onTimeUpdate={() => setCurrentTime(tutorialVideoRef.current?.currentTime ?? 0)}
                 onLoadedMetadata={() => setDuration(tutorialVideoRef.current?.duration ?? 0)}
                 onPlay={() => setIsPlaying(true)}
@@ -681,15 +625,15 @@ export default function CreatorUpload() {
                   {/* Draggable scrubber handle */}
                   {duration > 0 && (
                     <div
-                      className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-6 h-6 rounded-full bg-white border-2 border-primary cursor-grab active:cursor-grabbing shadow-lg hover:w-7 hover:h-7 transition-all"
+                      className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-white border-2 border-primary cursor-grab active:cursor-grabbing shadow-lg hover:w-6 hover:h-6 transition-all"
                       style={{ left: `${(currentTime / duration) * 100}%` }}
                       onMouseDown={(e) => {
                         if (!tutorialVideoRef.current || duration === 0) return;
                         e.preventDefault();
-                        const parentRect = (e.currentTarget as HTMLDivElement).parentElement?.getBoundingClientRect();
-                        if (!parentRect) return;
                         const handleMouseMove = (moveEvent: MouseEvent) => {
-                          const newTime = Math.max(0, Math.min((moveEvent.clientX - parentRect.left) / parentRect.width * duration, duration));
+                          const rect = (e.currentTarget as HTMLDivElement).parentElement?.getBoundingClientRect();
+                          if (!rect) return;
+                          const newTime = Math.max(0, Math.min((moveEvent.clientX - rect.left) / rect.width * duration, duration));
                           tutorialVideoRef.current!.currentTime = newTime;
                         };
                         const handleMouseUp = () => {
@@ -701,11 +645,10 @@ export default function CreatorUpload() {
                       }}
                       onTouchStart={(e) => {
                         if (!tutorialVideoRef.current || duration === 0) return;
-                        e.preventDefault();
-                        const parentRect = (e.currentTarget as HTMLDivElement).parentElement?.getBoundingClientRect();
-                        if (!parentRect) return;
                         const handleTouchMove = (moveEvent: TouchEvent) => {
-                          const newTime = Math.max(0, Math.min((moveEvent.touches[0].clientX - parentRect.left) / parentRect.width * duration, duration));
+                          const rect = (e.currentTarget as HTMLDivElement).parentElement?.getBoundingClientRect();
+                          if (!rect) return;
+                          const newTime = Math.max(0, Math.min((moveEvent.touches[0].clientX - rect.left) / rect.width * duration, duration));
                           tutorialVideoRef.current!.currentTime = newTime;
                         };
                         const handleTouchEnd = () => {

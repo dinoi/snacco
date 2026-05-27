@@ -13,7 +13,6 @@ import {
 import { useAuth } from "@/_core/hooks/useAuth";
 import { cn, formatTime } from "@/lib/utils";
 import { toast } from "sonner";
-import { VersionBadge } from "@/components/VersionBadge";
 
 const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25] as const;
 type Speed = (typeof SPEED_OPTIONS)[number];
@@ -124,15 +123,13 @@ export default function Player() {
           src={tutorial?.tutorialVideoUrl}
           className="w-full h-full object-contain"
           playsInline
-          preload="auto"
-          crossOrigin="anonymous"
+          preload="metadata"
           onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
           onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
           onEnded={() => setIsPlaying(false)}
           onClick={togglePlay}
-          onError={(e) => console.error('[Player] Video error:', e)}
         />
 
         {/* Controls overlay */}
@@ -156,10 +153,8 @@ export default function Player() {
                 <p className="text-white/60 text-xs">{chapters[activeChapter].label}</p>
               )}
             </div>
-            <div className="flex items-center gap-2">
-              <VersionBadge />
-              {/* Speed button */}
-              <div className="relative">
+            {/* Speed button */}
+            <div className="relative">
               <button
                 onClick={(e) => { e.stopPropagation(); setShowSpeedMenu(!showSpeedMenu); resetHideTimer(); }}
                 className="flex items-center gap-1 bg-black/50 backdrop-blur-sm rounded-full px-3 py-1.5 border border-white/20"
@@ -185,7 +180,6 @@ export default function Player() {
                   ))}
                 </div>
               )}
-              </div>
             </div>
           </div>
 

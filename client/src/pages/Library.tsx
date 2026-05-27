@@ -5,7 +5,6 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { VersionBadge } from "@/components/VersionBadge";
 
 export default function Library() {
   const { isAuthenticated } = useAuth();
@@ -29,9 +28,8 @@ export default function Library() {
 
   return (
     <div className="min-h-dvh bg-background">
-      <header className="sticky top-0 z-40 bg-background/90 backdrop-blur-md border-b border-border px-4 py-4 safe-top flex items-center justify-between">
+      <header className="sticky top-0 z-40 bg-background/90 backdrop-blur-md border-b border-border px-4 py-4 safe-top">
         <h1 className="text-xl font-black gradient-text">My Library</h1>
-        <VersionBadge />
       </header>
 
       <div className="p-4 space-y-3">
@@ -72,8 +70,6 @@ export default function Library() {
                 className="w-full h-full object-cover"
                 muted
                 playsInline
-                preload="auto"
-                crossOrigin="anonymous"
               />
               <div className="absolute inset-0 flex items-center justify-center bg-black/30">
                 <Play size={20} className="text-white fill-white" />

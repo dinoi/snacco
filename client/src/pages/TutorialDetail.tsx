@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatTime } from "@/lib/utils";
-import { VersionBadge } from "@/components/VersionBadge";
 
 export default function TutorialDetail() {
   const { id } = useParams<{ id: string }>();
@@ -70,7 +69,7 @@ export default function TutorialDetail() {
   return (
     <div className="min-h-dvh bg-background pb-8">
       {/* Back button */}
-      <div className="sticky top-0 z-40 bg-background/90 backdrop-blur-md px-4 py-3 safe-top flex items-center justify-between">
+      <div className="sticky top-0 z-40 bg-background/90 backdrop-blur-md px-4 py-3 safe-top">
         <button
           onClick={() => navigate("/")}
           className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
@@ -78,7 +77,6 @@ export default function TutorialDetail() {
           <ArrowLeft size={20} />
           <span className="text-sm font-medium">Back</span>
         </button>
-        <VersionBadge />
       </div>
 
       {/* Demo video */}
@@ -90,9 +88,6 @@ export default function TutorialDetail() {
           loop
           playsInline
           autoPlay
-          preload="auto"
-          crossOrigin="anonymous"
-          onError={(e) => console.error('[Video] Error loading demo:', e)}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
         {isOwned && (

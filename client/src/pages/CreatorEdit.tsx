@@ -1,9 +1,8 @@
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
-import { Button } from "@/components/ui/button";
 import { formatTime } from "@/lib/utils";
 import {
-  CheckCircle,
   ChevronUp,
   Loader2,
   Pause,
@@ -18,7 +17,6 @@ import { useLocation } from "wouter";
 import { useParams } from "wouter";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { VersionBadge } from "@/components/VersionBadge";
 
 const DEMO_MAX_SECONDS = 30;
 const TUTORIAL_MAX_SECONDS = 300;
@@ -52,12 +50,9 @@ function generateThumbnail(file: File): Promise<string | null> {
     video.muted = true;
     video.playsInline = true;
     video.preload = "auto";
-    let captureAttempted = false;
     const cleanup = () => URL.revokeObjectURL(url);
 
     const capture = () => {
-      if (captureAttempted) return;
-      captureAttempted = true;
       try {
         const canvas = document.createElement("canvas");
         canvas.width = video.videoWidth || 320;
@@ -71,31 +66,10 @@ function generateThumbnail(file: File): Promise<string | null> {
       } catch { cleanup(); resolve(null); }
     };
 
-    // Fallback timeout: if seeked never fires, capture on canplay (mobile fix)
-    const timeout = setTimeout(() => {
-      if (!captureAttempted && video.readyState >= 2) {
-        capture();
-      }
-    }, 3000);
-
-    const clearTimeout_ = () => clearTimeout(timeout);
-
-    // Try to seek to 0.5s for better thumbnail, but capture immediately if seeking fails
-    const trySeek = () => {
-      if (!captureAttempted && video.currentTime === 0) {
-        try {
-          video.currentTime = 0.5;
-        } catch {
-          capture();
-        }
-      }
-    };
-
-    video.addEventListener("seeked", () => { clearTimeout_(); capture(); }, { once: true });
-    video.addEventListener("error", () => { clearTimeout_(); cleanup(); resolve(null); }, { once: true });
-    video.addEventListener("loadeddata", trySeek, { once: true });
-    video.addEventListener("canplay", trySeek, { once: true });
-    video.addEventListener("play", () => { if (!captureAttempted) { clearTimeout_(); capture(); } }, { once: true });
+    video.addEventListener("seeked", capture, { once: true });
+    video.addEventListener("error", () => { cleanup(); resolve(null); }, { once: true });
+    video.addEventListener("loadeddata", () => { video.currentTime = 0.5; }, { once: true });
+    video.addEventListener("canplay", () => { video.currentTime = 0.5; }, { once: true });
     video.src = url;
     video.load();
   });
@@ -388,29 +362,16 @@ export default function CreatorEdit() {
     <div className="min-h-dvh bg-background flex flex-col">
       {/* Header */}
       <div className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b border-border px-4 pt-4 pb-3">
-        <div className="flex items-center justify-between gap-3 mb-3">
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={() => {
-                if (step === "meta") {
-                  navigate("/profile");
-                } else {
-                  const prevIdx = Math.max(0, STEPS.indexOf(step) - 1);
-                  setStep(STEPS[prevIdx]);
-                }
-              }} 
-              className="w-8 h-8 rounded-full bg-card flex items-center justify-center hover:bg-card/80 transition-colors"
-            >
-              <ChevronUp size={16} className="text-muted-foreground rotate-[-90deg]" />
-            </button>
-            <div>
-              <h1 className="text-base font-bold text-foreground">Edit Tutorial</h1>
-              <p className="text-xs text-muted-foreground">
-                {stepLabels[step]} · Step {Math.min(stepIdx + 1, STEPS.length)} of {STEPS.length}
-              </p>
-            </div>
+        <div className="flex items-center gap-3 mb-3">
+          <button onClick={() => navigate("/profile")} className="w-8 h-8 rounded-full bg-card flex items-center justify-center">
+            <ChevronUp size={16} className="text-muted-foreground rotate-[-90deg]" />
+          </button>
+          <div>
+            <h1 className="text-base font-bold text-foreground">Edit Tutorial</h1>
+            <p className="text-xs text-muted-foreground">
+              {stepLabels[step]} · Step {Math.min(stepIdx + 1, STEPS.length)} of {STEPS.length}
+            </p>
           </div>
-          <VersionBadge />
         </div>
         {/* Progress bar */}
         <div className="h-1 bg-border rounded-full overflow-hidden">
@@ -430,27 +391,6 @@ export default function CreatorEdit() {
         {/* ── Step 1: Meta ─────────────────────────────────────────── */}
         {step === "meta" && (
           <div className="space-y-4">
-            {/* Delete button at top */}
-            <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/30">
-              <button
-                onClick={handleDelete}
-                disabled={deleteMutation.isPending}
-                className="w-full py-2.5 rounded-lg text-sm font-bold border border-destructive/60 text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {deleteMutation.isPending ? (
-                  <>
-                    <Loader2 size={14} className="animate-spin" />
-                    Deleting...
-                  </>
-                ) : (
-                  <>
-                    <Trash2 size={14} />
-                    Delete Tutorial
-                  </>
-                )}
-              </button>
-            </div>
-
             <div>
               <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">Title *</label>
               <input
@@ -526,11 +466,8 @@ export default function CreatorEdit() {
                 <div className="relative w-full aspect-[9/16] bg-black rounded-2xl overflow-hidden mb-4">
                   <video
                     src={demoVideo.localUrl}
-                    poster={thumbnailDataUrl || undefined}
                     className="w-full h-full object-cover"
                     controls
-                    preload="auto"
-                    crossOrigin="anonymous"
                   />
                   <button
                     onClick={() => setDemoVideo(null)}
@@ -595,11 +532,8 @@ export default function CreatorEdit() {
                 <div className="relative w-full aspect-[9/16] bg-black rounded-2xl overflow-hidden mb-4">
                   <video
                     src={tutorialVideo.localUrl}
-                    poster={thumbnailDataUrl || undefined}
                     className="w-full h-full object-cover"
                     controls
-                    preload="auto"
-                    crossOrigin="anonymous"
                   />
                   <button
                     onClick={() => setTutorialVideo(null)}
@@ -662,11 +596,8 @@ export default function CreatorEdit() {
               <video
                 ref={tutorialVideoRef}
                 src={tutorialVideo.localUrl}
-                poster={thumbnailDataUrl || undefined}
                 className="w-full rounded-xl mb-4"
                 controls
-                preload="auto"
-                crossOrigin="anonymous"
                 onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
                 onDurationChange={(e) => setDuration(e.currentTarget.duration)}
                 onPlay={() => setIsPlaying(true)}
@@ -820,6 +751,23 @@ export default function CreatorEdit() {
                   "Save Changes"
                 )}
               </Button>
+            </div>
+            
+            <div className="pt-4 border-t border-border">
+              <button
+                onClick={handleDelete}
+                disabled={deleteMutation.isPending}
+                className="w-full py-2.5 rounded-xl text-sm font-bold border border-destructive/60 text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+              >
+                {deleteMutation.isPending ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin mr-2 inline" />
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete Tutorial"
+                )}
+              </button>
             </div>
           </div>
         )}
