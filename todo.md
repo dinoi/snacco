@@ -72,6 +72,7 @@
 
 ## Bug Fixes v1.26
 
+- [x] Fix video storage - switch to Manus persistent storage (v1.26)
 - [ ] Fix demo thumbnail black after upload - extract first frame
 - [ ] Fix chapter marking playback black frame - show first frame
 - [ ] Improve chapter marking UX - better scrubbing/dragging
