@@ -203,6 +203,12 @@ export async function deleteChaptersByTutorialId(tutorialId: number) {
   await db.delete(chapters).where(eq(chapters.tutorialId, tutorialId));
 }
 
+export async function deleteTutorial(tutorialId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(tutorials).where(eq(tutorials.id, tutorialId));
+}
+
 // ─── Unlocks ──────────────────────────────────────────────────────────
 
 export async function unlockTutorial(userId: number, tutorialId: number, tokensPaid: number) {

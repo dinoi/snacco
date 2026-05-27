@@ -161,6 +161,22 @@ export default function CreatorEdit() {
     onError: (err) => toast.error(err.message ?? "Failed to update tutorial."),
   });
 
+  const deleteMutation = trpc.tutorials.delete.useMutation({
+    onSuccess: () => {
+      utils.tutorials.myTutorials.invalidate();
+      utils.tutorials.feed.invalidate();
+      toast.success("Tutorial deleted successfully!");
+      navigate("/profile");
+    },
+    onError: (err) => toast.error(err.message ?? "Failed to delete tutorial."),
+  });
+
+  const handleDelete = () => {
+    if (confirm("Are you sure you want to delete this tutorial? This action cannot be undone.")) {
+      deleteMutation.mutate({ id: tutorialId });
+    }
+  };
+
   if (!isAuthenticated || !user?.isCreator) {
     return (
       <div className="min-h-dvh bg-background flex flex-col items-center justify-center px-6 text-center gap-4">
@@ -735,6 +751,23 @@ export default function CreatorEdit() {
                   "Save Changes"
                 )}
               </Button>
+            </div>
+            
+            <div className="pt-4 border-t border-border">
+              <button
+                onClick={handleDelete}
+                disabled={deleteMutation.isPending}
+                className="w-full py-2.5 rounded-xl text-sm font-bold border border-destructive/60 text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+              >
+                {deleteMutation.isPending ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin mr-2 inline" />
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete Tutorial"
+                )}
+              </button>
             </div>
           </div>
         )}

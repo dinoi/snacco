@@ -123,6 +123,7 @@ export default function Player() {
           src={tutorial?.tutorialVideoUrl}
           className="w-full h-full object-contain"
           playsInline
+          preload="metadata"
           onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
           onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
           onPlay={() => setIsPlaying(true)}

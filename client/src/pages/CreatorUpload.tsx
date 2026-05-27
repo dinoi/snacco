@@ -455,7 +455,7 @@ export default function CreatorUpload() {
             {demoVideo && !uploading && (
               <div className="space-y-3">
                 <div className="relative w-full h-48 rounded-2xl overflow-hidden bg-black">
-                  <video src={demoVideo.localUrl} className="w-full h-full object-cover" muted loop playsInline autoPlay />
+                  <video src={demoVideo.url} className="w-full h-full object-cover" muted loop playsInline autoPlay preload="metadata" />
                   <div className="absolute top-3 left-3 bg-black/60 rounded-full px-2.5 py-1 flex items-center gap-1.5">
                     <CheckCircle size={12} className="text-green-400" />
                     <span className="text-white text-xs font-semibold">Demo Clip · {formatTime(demoVideo.duration)}</span>
@@ -547,7 +547,7 @@ export default function CreatorUpload() {
             {tutorialVideo && !uploading && (
               <div className="space-y-3">
                 <div className="relative w-full h-48 rounded-2xl overflow-hidden bg-black">
-                  <video src={tutorialVideo.localUrl} className="w-full h-full object-cover" muted loop playsInline autoPlay />
+                  <video src={tutorialVideo.url} className="w-full h-full object-cover" muted loop playsInline autoPlay preload="metadata" />
                   <div className="absolute top-3 left-3 bg-black/60 rounded-full px-2.5 py-1 flex items-center gap-1.5">
                     <CheckCircle size={12} className="text-green-400" />
                     <span className="text-white text-xs font-semibold">Tutorial · {formatTime(tutorialVideo.duration)}</span>
@@ -580,9 +580,10 @@ export default function CreatorUpload() {
             <div className="relative w-full rounded-2xl overflow-hidden bg-black" style={{ aspectRatio: "9/16", maxHeight: "40vh" }}>
               <video
                 ref={tutorialVideoRef}
-                src={tutorialVideo.localUrl}
+                src={tutorialVideo.url}
                 className="w-full h-full object-contain"
                 playsInline
+                preload="metadata"
                 onTimeUpdate={() => setCurrentTime(tutorialVideoRef.current?.currentTime ?? 0)}
                 onLoadedMetadata={() => setDuration(tutorialVideoRef.current?.duration ?? 0)}
                 onPlay={() => setIsPlaying(true)}
@@ -591,7 +592,7 @@ export default function CreatorUpload() {
               {/* Chapter markers on scrubber */}
               <div className="absolute bottom-0 left-0 right-0 px-3 pb-3 space-y-2">
                 <div 
-                  className="relative h-1 bg-white/20 rounded-full cursor-pointer"
+                  className="relative h-2 bg-white/20 rounded-full cursor-pointer hover:h-3 transition-all"
                   onClick={(e) => {
                     if (!tutorialVideoRef.current || duration === 0) return;
                     const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
@@ -624,7 +625,7 @@ export default function CreatorUpload() {
                   {/* Draggable scrubber handle */}
                   {duration > 0 && (
                     <div
-                      className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-white border-2 border-primary cursor-grab active:cursor-grabbing shadow-lg"
+                      className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-white border-2 border-primary cursor-grab active:cursor-grabbing shadow-lg hover:w-6 hover:h-6 transition-all"
                       style={{ left: `${(currentTime / duration) * 100}%` }}
                       onMouseDown={(e) => {
                         if (!tutorialVideoRef.current || duration === 0) return;

@@ -319,6 +319,26 @@ export const appRouter = router({
         return { success: true, tutorialId: input.id };
       }),
 
+    // Creator: delete a tutorial
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const user = await getUserById(ctx.user.id);
+        if (!user?.isCreator) throw new TRPCError({ code: "FORBIDDEN", message: "Enable creator mode first" });
+
+        // Verify ownership
+        const tutorial = await db.getTutorialById(input.id);
+        if (!tutorial) throw new TRPCError({ code: "NOT_FOUND" });
+        if (tutorial.creatorId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "You can only delete your own tutorials" });
+
+        // Delete chapters first
+        await db.deleteChaptersByTutorialId(input.id);
+        
+        // Delete tutorial
+        await db.deleteTutorial(input.id);
+
+        return { success: true };
+      }),
 
     // Admin: list all tutorials
     adminList: adminProcedure.query(async () => {
