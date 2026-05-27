@@ -60,14 +60,11 @@ export default function Feed() {
             <div className="relative w-full aspect-[9/16] bg-black overflow-hidden">
               <video
                 src={tutorial.demoVideoUrl}
-                poster={tutorial.demoVideoUrl ? `${tutorial.demoVideoUrl}#t=0.1` : undefined}
                 className="w-full h-full object-cover"
                 muted
                 loop
                 playsInline
-                preload="auto"
-                crossOrigin="anonymous"
-                autoPlay
+                preload="metadata"
                 onMouseEnter={e => (e.currentTarget as HTMLVideoElement).play()}
               />
               {/* Gradient overlay */}
