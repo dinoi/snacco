@@ -81,7 +81,7 @@
 
 ## Critical Bugs v1.29 (URGENT)
 
-- [ ] **Web upload thumbnail missing** - Mobile web shows black box, desktop shows thumbnail. Investigate video metadata loading on mobile
-- [ ] **Chapter marker video black & won't play** - Video element in chapter marking UI shows black frame, no playback. Add preload/crossOrigin fixes
-- [ ] **Back button loses all data** - Pressing back in upload flow navigates to Profile instead of previous step. Implement step-by-step navigation with state persistence
-- [ ] **Thumbnail extraction** - Ensure first frame is captured and displayed immediately for all video previews
+- [x] **Web upload thumbnail missing** - Added 2-second fallback timeout in generateThumbnail() to capture frame if seeked event doesn't fire on mobile
+- [x] **Chapter marker video black & won't play** - Use localUrl instead of remote URL, added poster attribute, changed preload to auto
+- [x] **Back button loses all data** - Back button now navigates to previous step, only goes to Profile if on first step
+- [x] **Thumbnail extraction** - First frame captured immediately via canvas, displayed as poster while video loads

@@ -514,8 +514,11 @@ export default function CreatorEdit() {
                 <div className="relative w-full aspect-[9/16] bg-black rounded-2xl overflow-hidden mb-4">
                   <video
                     src={demoVideo.localUrl}
+                    poster={thumbnailDataUrl || undefined}
                     className="w-full h-full object-cover"
                     controls
+                    preload="auto"
+                    crossOrigin="anonymous"
                   />
                   <button
                     onClick={() => setDemoVideo(null)}
@@ -580,8 +583,11 @@ export default function CreatorEdit() {
                 <div className="relative w-full aspect-[9/16] bg-black rounded-2xl overflow-hidden mb-4">
                   <video
                     src={tutorialVideo.localUrl}
+                    poster={thumbnailDataUrl || undefined}
                     className="w-full h-full object-cover"
                     controls
+                    preload="auto"
+                    crossOrigin="anonymous"
                   />
                   <button
                     onClick={() => setTutorialVideo(null)}
