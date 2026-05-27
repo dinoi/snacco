@@ -90,8 +90,9 @@ export default function TutorialDetail() {
           loop
           playsInline
           autoPlay
-          preload="metadata"
+          preload="auto"
           crossOrigin="anonymous"
+          onError={(e) => console.error('[Video] Error loading demo:', e)}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
         {isOwned && (

@@ -124,7 +124,7 @@ export default function Player() {
           src={tutorial?.tutorialVideoUrl}
           className="w-full h-full object-contain"
           playsInline
-          preload="metadata"
+          preload="auto"
           crossOrigin="anonymous"
           onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
           onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
@@ -132,6 +132,7 @@ export default function Player() {
           onPause={() => setIsPlaying(false)}
           onEnded={() => setIsPlaying(false)}
           onClick={togglePlay}
+          onError={(e) => console.error('[Player] Video error:', e)}
         />
 
         {/* Controls overlay */}
