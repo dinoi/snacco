@@ -50,9 +50,12 @@ function generateThumbnail(file: File): Promise<string | null> {
     video.muted = true;
     video.playsInline = true;
     video.preload = "auto";
+    let captureAttempted = false;
     const cleanup = () => URL.revokeObjectURL(url);
 
     const capture = () => {
+      if (captureAttempted) return;
+      captureAttempted = true;
       try {
         const canvas = document.createElement("canvas");
         canvas.width = video.videoWidth || 320;
@@ -66,8 +69,17 @@ function generateThumbnail(file: File): Promise<string | null> {
       } catch { cleanup(); resolve(null); }
     };
 
-    video.addEventListener("seeked", capture, { once: true });
-    video.addEventListener("error", () => { cleanup(); resolve(null); }, { once: true });
+    // Fallback timeout: if seeked never fires, capture on canplay (mobile fix)
+    const timeout = setTimeout(() => {
+      if (!captureAttempted && video.readyState >= 2) {
+        capture();
+      }
+    }, 2000);
+
+    const clearTimeout_ = () => clearTimeout(timeout);
+
+    video.addEventListener("seeked", () => { clearTimeout_(); capture(); }, { once: true });
+    video.addEventListener("error", () => { clearTimeout_(); cleanup(); resolve(null); }, { once: true });
     video.addEventListener("loadeddata", () => { video.currentTime = 0.5; }, { once: true });
     video.addEventListener("canplay", () => { video.currentTime = 0.5; }, { once: true });
     video.src = url;
@@ -313,7 +325,17 @@ export default function CreatorUpload() {
       <div className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b border-border px-4 pt-4 pb-3">
         <div className="flex items-center justify-between gap-3 mb-3">
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate("/profile")} className="w-8 h-8 rounded-full bg-card flex items-center justify-center">
+            <button 
+              onClick={() => {
+                if (step === "meta") {
+                  navigate("/profile");
+                } else {
+                  const prevIdx = Math.max(0, STEPS.indexOf(step) - 1);
+                  setStep(STEPS[prevIdx]);
+                }
+              }} 
+              className="w-8 h-8 rounded-full bg-card flex items-center justify-center hover:bg-card/80 transition-colors"
+            >
               <ChevronUp size={16} className="text-muted-foreground rotate-[-90deg]" />
             </button>
             <div>
@@ -584,10 +606,11 @@ export default function CreatorUpload() {
             <div className="relative w-full rounded-2xl overflow-hidden bg-black" style={{ aspectRatio: "9/16", maxHeight: "40vh" }}>
               <video
                 ref={tutorialVideoRef}
-                src={tutorialVideo.url}
+                src={tutorialVideo.localUrl || tutorialVideo.url}
+                poster={thumbnailDataUrl || undefined}
                 className="w-full h-full object-contain"
                 playsInline
-                preload="metadata"
+                preload="auto"
                 crossOrigin="anonymous"
                 onTimeUpdate={() => setCurrentTime(tutorialVideoRef.current?.currentTime ?? 0)}
                 onLoadedMetadata={() => setDuration(tutorialVideoRef.current?.duration ?? 0)}

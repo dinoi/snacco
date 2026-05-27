@@ -52,9 +52,12 @@ function generateThumbnail(file: File): Promise<string | null> {
     video.muted = true;
     video.playsInline = true;
     video.preload = "auto";
+    let captureAttempted = false;
     const cleanup = () => URL.revokeObjectURL(url);
 
     const capture = () => {
+      if (captureAttempted) return;
+      captureAttempted = true;
       try {
         const canvas = document.createElement("canvas");
         canvas.width = video.videoWidth || 320;
@@ -68,8 +71,17 @@ function generateThumbnail(file: File): Promise<string | null> {
       } catch { cleanup(); resolve(null); }
     };
 
-    video.addEventListener("seeked", capture, { once: true });
-    video.addEventListener("error", () => { cleanup(); resolve(null); }, { once: true });
+    // Fallback timeout: if seeked never fires, capture on canplay (mobile fix)
+    const timeout = setTimeout(() => {
+      if (!captureAttempted && video.readyState >= 2) {
+        capture();
+      }
+    }, 2000);
+
+    const clearTimeout_ = () => clearTimeout(timeout);
+
+    video.addEventListener("seeked", () => { clearTimeout_(); capture(); }, { once: true });
+    video.addEventListener("error", () => { clearTimeout_(); cleanup(); resolve(null); }, { once: true });
     video.addEventListener("loadeddata", () => { video.currentTime = 0.5; }, { once: true });
     video.addEventListener("canplay", () => { video.currentTime = 0.5; }, { once: true });
     video.src = url;
@@ -366,7 +378,17 @@ export default function CreatorEdit() {
       <div className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b border-border px-4 pt-4 pb-3">
         <div className="flex items-center justify-between gap-3 mb-3">
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate("/profile")} className="w-8 h-8 rounded-full bg-card flex items-center justify-center">
+            <button 
+              onClick={() => {
+                if (step === "meta") {
+                  navigate("/profile");
+                } else {
+                  const prevIdx = Math.max(0, STEPS.indexOf(step) - 1);
+                  setStep(STEPS[prevIdx]);
+                }
+              }} 
+              className="w-8 h-8 rounded-full bg-card flex items-center justify-center hover:bg-card/80 transition-colors"
+            >
               <ChevronUp size={16} className="text-muted-foreground rotate-[-90deg]" />
             </button>
             <div>
@@ -622,8 +644,11 @@ export default function CreatorEdit() {
               <video
                 ref={tutorialVideoRef}
                 src={tutorialVideo.localUrl}
+                poster={thumbnailDataUrl || undefined}
                 className="w-full rounded-xl mb-4"
                 controls
+                preload="auto"
+                crossOrigin="anonymous"
                 onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
                 onDurationChange={(e) => setDuration(e.currentTarget.duration)}
                 onPlay={() => setIsPlaying(true)}

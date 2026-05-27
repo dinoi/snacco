@@ -78,3 +78,10 @@
 - [ ] Improve chapter marking UX - better scrubbing/dragging
 - [ ] Add delete video option in edit page
 - [ ] Fix videos not showing on discovery feed (black)
+
+## Critical Bugs v1.29 (URGENT)
+
+- [ ] **Web upload thumbnail missing** - Mobile web shows black box, desktop shows thumbnail. Investigate video metadata loading on mobile
+- [ ] **Chapter marker video black & won't play** - Video element in chapter marking UI shows black frame, no playback. Add preload/crossOrigin fixes
+- [ ] **Back button loses all data** - Pressing back in upload flow navigates to Profile instead of previous step. Implement step-by-step navigation with state persistence
+- [ ] **Thumbnail extraction** - Ensure first frame is captured and displayed immediately for all video previews
