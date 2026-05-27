@@ -92,3 +92,10 @@
 - [x] **Mobile demo thumbnail still missing** - Improved thumbnail generation with play event listener and try-catch for seeking
 - [x] **Video scrubbing too difficult** - Increased scrubber handle size from 5x5 to 7x7 for easier mobile dragging
 - [x] **Feed video playback black** - Added autoPlay and changed preload to auto in Feed.tsx video elements
+
+## Video Playback Fixes v1.31
+
+- [x] Changed all video preload from "metadata" to "auto" across all pages (TutorialDetail, Player, Library, Feed)
+- [x] Added error logging to video elements for debugging playback issues
+- [x] Added crossOrigin="anonymous" to all video elements
+- [x] Improved thumbnail generation with multiple fallback event listeners (seeked, play, loadeddata, canplay, timeout)

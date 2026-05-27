@@ -171,6 +171,10 @@ export default function CreatorUpload() {
 
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
+      const timeoutId = setTimeout(() => {
+        xhr.abort();
+        reject(new Error("Upload timeout - please check your connection and try again"));
+      }, 5 * 60 * 1000); // 5 minute timeout for large videos
 
       xhr.upload.addEventListener("progress", (e) => {
         if (e.lengthComputable) {
@@ -180,6 +184,7 @@ export default function CreatorUpload() {
       });
 
       xhr.addEventListener("load", () => {
+        clearTimeout(timeoutId);
         if (xhr.status === 200) {
           try {
             const result = JSON.parse(xhr.responseText);
@@ -202,10 +207,12 @@ export default function CreatorUpload() {
       });
 
       xhr.addEventListener("error", () => {
+        clearTimeout(timeoutId);
         reject(new Error("Network error during upload"));
       });
 
       xhr.addEventListener("abort", () => {
+        clearTimeout(timeoutId);
         reject(new Error("Upload cancelled"));
       });
 
@@ -263,7 +270,10 @@ export default function CreatorUpload() {
         setTimeout(() => setStep("chapters"), 400);
       }
     } catch (err: any) {
-      setUploadError(err?.message ?? "Upload failed. Please try again.");
+      const errorMsg = err?.message ?? "Upload failed. Please try again.";
+      setUploadError(errorMsg);
+      toast.error(errorMsg);
+      console.error(`[Upload] ${type} upload failed:`, err);
     } finally {
       setUploading(false);
       setUploadingType(null);
