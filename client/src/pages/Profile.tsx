@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { trpc } from "@/lib/trpc";
+import { VersionBadge } from "@/components/VersionBadge";
 
 export default function Profile() {
   const { isAuthenticated, user, logout } = useAuth();
@@ -48,8 +49,9 @@ export default function Profile() {
 
   return (
     <div className="min-h-dvh bg-background">
-      <header className="sticky top-0 z-40 bg-background/90 backdrop-blur-md border-b border-border px-4 py-4 safe-top">
+      <header className="sticky top-0 z-40 bg-background/90 backdrop-blur-md border-b border-border px-4 py-4 safe-top flex items-center justify-between">
         <h1 className="text-xl font-black gradient-text">Profile</h1>
+        <VersionBadge />
       </header>
 
       <div className="p-4 space-y-4">

@@ -5,6 +5,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { VersionBadge } from "@/components/VersionBadge";
 
 export default function Library() {
   const { isAuthenticated } = useAuth();
@@ -28,8 +29,9 @@ export default function Library() {
 
   return (
     <div className="min-h-dvh bg-background">
-      <header className="sticky top-0 z-40 bg-background/90 backdrop-blur-md border-b border-border px-4 py-4 safe-top">
+      <header className="sticky top-0 z-40 bg-background/90 backdrop-blur-md border-b border-border px-4 py-4 safe-top flex items-center justify-between">
         <h1 className="text-xl font-black gradient-text">My Library</h1>
+        <VersionBadge />
       </header>
 
       <div className="p-4 space-y-3">

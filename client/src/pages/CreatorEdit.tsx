@@ -1,8 +1,9 @@
-import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
+import { Button } from "@/components/ui/button";
 import { formatTime } from "@/lib/utils";
 import {
+  CheckCircle,
   ChevronUp,
   Loader2,
   Pause,
@@ -17,6 +18,7 @@ import { useLocation } from "wouter";
 import { useParams } from "wouter";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { VersionBadge } from "@/components/VersionBadge";
 
 const DEMO_MAX_SECONDS = 30;
 const TUTORIAL_MAX_SECONDS = 300;
@@ -362,16 +364,19 @@ export default function CreatorEdit() {
     <div className="min-h-dvh bg-background flex flex-col">
       {/* Header */}
       <div className="sticky top-0 z-20 bg-background/95 backdrop-blur border-b border-border px-4 pt-4 pb-3">
-        <div className="flex items-center gap-3 mb-3">
-          <button onClick={() => navigate("/profile")} className="w-8 h-8 rounded-full bg-card flex items-center justify-center">
-            <ChevronUp size={16} className="text-muted-foreground rotate-[-90deg]" />
-          </button>
-          <div>
-            <h1 className="text-base font-bold text-foreground">Edit Tutorial</h1>
-            <p className="text-xs text-muted-foreground">
-              {stepLabels[step]} · Step {Math.min(stepIdx + 1, STEPS.length)} of {STEPS.length}
-            </p>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="flex items-center gap-3">
+            <button onClick={() => navigate("/profile")} className="w-8 h-8 rounded-full bg-card flex items-center justify-center">
+              <ChevronUp size={16} className="text-muted-foreground rotate-[-90deg]" />
+            </button>
+            <div>
+              <h1 className="text-base font-bold text-foreground">Edit Tutorial</h1>
+              <p className="text-xs text-muted-foreground">
+                {stepLabels[step]} · Step {Math.min(stepIdx + 1, STEPS.length)} of {STEPS.length}
+              </p>
+            </div>
           </div>
+          <VersionBadge />
         </div>
         {/* Progress bar */}
         <div className="h-1 bg-border rounded-full overflow-hidden">
