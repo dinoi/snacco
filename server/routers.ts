@@ -8,7 +8,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db-postgres";
 import * as storage from "./storage";
-import { getUserById, getAllTutorials, setTutorialPublished, getTotalUsers, getTotalUnlocks, getTotalTokensConsumed } from "./db";
+import { TRPCError } from "@trpc/server";
 
 // ─── In-memory chunk registry ─────────────────────────────────────────────────
 // Tracks which chunks have been received for each upload session.
@@ -79,7 +79,7 @@ export const appRouter = router({
 
     // Admin
     adminList: adminProcedure.query(async () => {
-      return db.db.getPublishedTutorials();
+      return db.getPublishedTutorials();
     }),
 
     adminGetTokenHistory: adminProcedure
@@ -109,7 +109,7 @@ export const appRouter = router({
     getChapters: publicProcedure
       .input(z.object({ tutorialId: z.number() }))
       .query(async ({ input }) => {
-        return db.getChaptersByTutorial(input.tutorialId);
+        return db.getChaptersByTutorialId(input.tutorialId);
       }),
 
     // Check if current user has unlocked a tutorial
@@ -349,7 +349,7 @@ export const appRouter = router({
     adminSetPublished: adminProcedure
       .input(z.object({ id: z.number(), isPublished: z.boolean() }))
       .mutation(async ({ input }) => {
-        await setTutorialPublished(input.id, input.isPublished);
+        await db.setTutorialPublished(input.id, input.isPublished);
         return { success: true };
       }),
   }),
@@ -358,9 +358,9 @@ export const appRouter = router({
   admin: router({
     stats: adminProcedure.query(async () => {
       const [totalUsers, totalUnlocks, tokensConsumed] = await Promise.all([
-        getTotalUsers(),
-        getTotalUnlocks(),
-        getTotalTokensConsumed(),
+        db.getTotalUsers(),
+        db.getTotalUnlocks(),
+        db.getTotalTokensConsumed(),
       ]);
       return { totalUsers, totalUnlocks, tokensConsumed };
     }),

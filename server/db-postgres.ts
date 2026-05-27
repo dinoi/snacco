@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import {
   chapters,
   InsertChapter,
@@ -259,8 +259,56 @@ export async function isUserTutorialUnlocked(userId: number, tutorialId: number)
   const result = await db
     .select()
     .from(unlocks)
-    .where(eq(unlocks.userId, userId) && eq(unlocks.tutorialId, tutorialId))
+    .where(and(eq(unlocks.userId, userId), eq(unlocks.tutorialId, tutorialId)))
     .limit(1);
 
   return result.length > 0;
+}
+
+export async function getAllTokenTransactions() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(tokenTransactions).orderBy(desc(tokenTransactions.createdAt));
+}
+
+export async function getTokenHistory(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db
+    .select()
+    .from(tokenTransactions)
+    .where(eq(tokenTransactions.userId, userId))
+    .orderBy(desc(tokenTransactions.createdAt));
+}
+
+// ─── Admin Stats ──────────────────────────────────────────────────────
+
+export async function setTutorialPublished(tutorialId: number, isPublished: boolean) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(tutorials).set({ isPublished }).where(eq(tutorials.id, tutorialId));
+}
+
+export async function getTotalUsers() {
+  const db = await getDb();
+  if (!db) return 0;
+  const result = await db.select({ count: eq(users.id, users.id) }).from(users);
+  return result.length;
+}
+
+export async function getTotalUnlocks() {
+  const db = await getDb();
+  if (!db) return 0;
+  const result = await db.select().from(unlocks);
+  return result.length;
+}
+
+export async function getTotalTokensConsumed() {
+  const db = await getDb();
+  if (!db) return 0;
+  const result = await db
+    .select()
+    .from(tokenTransactions)
+    .where((t) => t.amount < 0); // Only count debits
+  return Math.abs(result.reduce((sum, t) => sum + (t.amount || 0), 0));
 }
