@@ -68,3 +68,12 @@
 - [x] Add marker editing: rename + drag-to-reorder
 - [x] Add draggable circle handle on timeline for current time scrubbing
 - [x] Fix published upload failure: replaced chunked base64 tRPC with direct multipart FormData POST to /api/upload-video
+
+
+## Bug Fixes v1.26
+
+- [ ] Fix demo thumbnail black after upload - extract first frame
+- [ ] Fix chapter marking playback black frame - show first frame
+- [ ] Improve chapter marking UX - better scrubbing/dragging
+- [ ] Add delete video option in edit page
+- [ ] Fix videos not showing on discovery feed (black)
