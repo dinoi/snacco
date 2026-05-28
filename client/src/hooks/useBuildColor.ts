@@ -8,7 +8,7 @@ interface BuildInfo {
 }
 
 const defaultBuildInfo: BuildInfo = {
-  version: 'v1.24',
+  version: 'v1.41',
   color: '#0000FF',
   colorName: 'blue',
   timestamp: new Date().toISOString()
