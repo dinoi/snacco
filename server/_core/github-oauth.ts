@@ -108,11 +108,9 @@ export function registerGitHubOAuthRoutes(app: Express) {
       }
 
       // Upsert user in database
-      const githubId = `github_${userInfo.id}`;
       const openId = `github_${userInfo.id}`;
       const user = await db.upsertUser({
         openId,
-        githubId,
         name: userInfo.name || userInfo.login,
         email: email || null,
         loginMethod: "github",
@@ -121,7 +119,7 @@ export function registerGitHubOAuthRoutes(app: Express) {
 
       // Create session token (JWT)
       const sessionToken = await createSessionToken(user.id, {
-        githubId,
+        githubId: openId,
         name: user.name || "",
         expiresInMs: ONE_YEAR_MS,
       });

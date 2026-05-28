@@ -31,24 +31,23 @@ export async function getDb() {
 
 // ─── Users ────────────────────────────────────────────────────────────
 
-export async function upsertUser(user: InsertUser) {
+export async function upsertUser(user: { openId: string; name?: string | null; email?: string | null; loginMethod?: string; lastSignedIn?: Date }) {
   const db = await getDb();
   if (!db) throw new Error("Database not connected");
 
-  if (!user.githubId) throw new Error("User githubId is required for upsert");
   if (!user.openId) throw new Error("User openId is required for upsert");
 
-  // Check if user exists
-  const existing = await db.select().from(users).where(eq(users.githubId, user.githubId)).limit(1);
+  // Check if user exists by openId
+  const existing = await db.select().from(users).where(eq(users.openId, user.openId)).limit(1);
 
   if (existing.length > 0) {
     // Update existing user
-    const updateData: Partial<InsertUser> = {
+    const updateData: any = {
       name: user.name,
       email: user.email,
       lastSignedIn: user.lastSignedIn || new Date(),
     };
-    await db.update(users).set(updateData).where(eq(users.githubId, user.githubId));
+    await db.update(users).set(updateData).where(eq(users.openId, user.openId));
     return existing[0];
   } else {
     // Create new user
@@ -56,10 +55,10 @@ export async function upsertUser(user: InsertUser) {
       .insert(users)
       .values({
         openId: user.openId,
-        githubId: user.githubId,
+        githubId: user.openId, // same as openId for compatibility
         name: user.name,
         email: user.email,
-        loginMethod: "github",
+        loginMethod: user.loginMethod || "github",
         role: "user",
         isCreator: false,
         tokenBalance: 20,
@@ -74,7 +73,8 @@ export async function upsertUser(user: InsertUser) {
 export async function getUserByGithubId(githubId: string) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(users).where(eq(users.githubId, githubId)).limit(1);
+  // Use openId since that's what the actual DB has
+  const result = await db.select().from(users).where(eq(users.openId, githubId)).limit(1);
   return result[0];
 }
 
