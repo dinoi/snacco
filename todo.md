@@ -109,3 +109,9 @@
 - [x] Add chapter navigation buttons (prev/next chapter)
 - [x] Improve mobile touch targets for all controls
 - [x] Test playback controls on both desktop and mobile
+
+## Bug Fixes v1.42
+
+- [x] Feed shows black screen instead of video playback (removed crossOrigin="anonymous" from all video elements - CORS blocking Railway S3)
+- [x] No thumbnail generated on mobile for demo video upload (improved capture: seek to 0.5s, black-frame detection, 3s timeout, webkit-playsinline)
+- [x] Long video upload (2 min) fails on mobile (added 10-min request timeout for upload route)

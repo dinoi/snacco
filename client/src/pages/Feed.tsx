@@ -66,8 +66,11 @@ export default function Feed() {
                 playsInline
                 autoPlay
                 preload="auto"
-                crossOrigin="anonymous"
                 onMouseEnter={e => (e.currentTarget as HTMLVideoElement).play()}
+                onError={e => {
+                  const vid = e.currentTarget as HTMLVideoElement;
+                  console.error('[Feed] Video load error:', vid.src, vid.error?.message);
+                }}
               />
               {/* Gradient overlay */}
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />

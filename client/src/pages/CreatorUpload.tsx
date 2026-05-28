@@ -50,6 +50,8 @@ function generateThumbnail(file: File): Promise<string | null> {
     video.muted = true;
     video.playsInline = true;
     video.preload = "auto";
+    // Required for iOS Safari to allow programmatic frame capture
+    video.setAttribute("webkit-playsinline", "true");
     let captureAttempted = false;
     const cleanup = () => URL.revokeObjectURL(url);
 
@@ -65,13 +67,26 @@ function generateThumbnail(file: File): Promise<string | null> {
         const ctx = canvas.getContext("2d");
         if (!ctx) { cleanup(); resolve(null); return; }
         
-        // Only draw image if we have valid video dimensions
         if (video.videoWidth > 0 && video.videoHeight > 0) {
           ctx.drawImage(video, 0, 0, width, height);
+          // Check if the captured frame is all black (common on mobile)
+          const imageData = ctx.getImageData(0, 0, Math.min(width, 10), Math.min(height, 10));
+          const isBlack = imageData.data.every((v, i) => i % 4 === 3 ? true : v < 5);
+          if (isBlack) {
+            // Try seeking to a slightly later time
+            if (video.currentTime < 1 && video.duration > 1) {
+              captureAttempted = false; // Allow another capture
+              video.currentTime = 1.0;
+              return;
+            }
+          }
         } else {
-          // Fallback: black canvas only if we can't get video data
-          ctx.fillStyle = "#000000";
+          ctx.fillStyle = "#1a1a1a";
           ctx.fillRect(0, 0, width, height);
+          ctx.fillStyle = "#666";
+          ctx.font = `${Math.max(14, height / 10)}px sans-serif`;
+          ctx.textAlign = "center";
+          ctx.fillText("Video", width / 2, height / 2);
         }
         
         const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
@@ -80,28 +95,41 @@ function generateThumbnail(file: File): Promise<string | null> {
       } catch { cleanup(); resolve(null); }
     };
 
-    // Fallback timeout: if nothing fires, capture anyway (mobile fix)
+    // Longer timeout for mobile devices (3 seconds)
     const timeout = setTimeout(() => {
-      if (!captureAttempted && video.readyState >= 2) {
-        capture();
+      if (!captureAttempted) {
+        if (video.readyState >= 2) {
+          capture();
+        } else {
+          cleanup();
+          resolve(null);
+        }
       }
-    }, 1000);
+    }, 3000);
 
     const clearTimeout_ = () => clearTimeout(timeout);
 
-    // Capture at first frame (time 0) instead of seeking
     const tryCapture = () => {
       if (!captureAttempted && video.readyState >= 2) {
         clearTimeout_();
+        // Seek to 0.5s to avoid black first frames (common in encoded videos)
+        if (video.currentTime < 0.1 && video.duration > 0.5) {
+          video.currentTime = 0.5;
+          return; // Wait for seeked event
+        }
         capture();
       }
     };
 
-    video.addEventListener("seeked", tryCapture, { once: true });
+    video.addEventListener("seeked", () => {
+      if (!captureAttempted && video.readyState >= 2) {
+        clearTimeout_();
+        capture();
+      }
+    });
     video.addEventListener("error", () => { clearTimeout_(); cleanup(); resolve(null); }, { once: true });
     video.addEventListener("loadeddata", tryCapture, { once: true });
     video.addEventListener("canplay", tryCapture, { once: true });
-    video.addEventListener("play", tryCapture, { once: true });
     video.src = url;
     video.load();
   });
@@ -511,7 +539,7 @@ export default function CreatorUpload() {
             {demoVideo && !uploading && (
               <div className="space-y-3">
                 <div className="relative w-full h-48 rounded-2xl overflow-hidden bg-black">
-                  <video src={demoVideo.localUrl || demoVideo.url} poster={thumbnailDataUrl || undefined} className="w-full h-full object-cover" muted loop playsInline autoPlay preload="auto" crossOrigin="anonymous" />
+                  <video src={demoVideo.localUrl || demoVideo.url} poster={thumbnailDataUrl || undefined} className="w-full h-full object-cover" muted loop playsInline autoPlay preload="auto" />
                   <div className="absolute top-3 left-3 bg-black/60 rounded-full px-2.5 py-1 flex items-center gap-1.5">
                     <CheckCircle size={12} className="text-green-400" />
                     <span className="text-white text-xs font-semibold">Demo Clip · {formatTime(demoVideo.duration)}</span>
@@ -603,7 +631,7 @@ export default function CreatorUpload() {
             {tutorialVideo && !uploading && (
               <div className="space-y-3">
                 <div className="relative w-full h-48 rounded-2xl overflow-hidden bg-black">
-                  <video src={tutorialVideo.localUrl || tutorialVideo.url} poster={thumbnailDataUrl || undefined} className="w-full h-full object-cover" muted loop playsInline autoPlay preload="auto" crossOrigin="anonymous" />
+                  <video src={tutorialVideo.localUrl || tutorialVideo.url} poster={thumbnailDataUrl || undefined} className="w-full h-full object-cover" muted loop playsInline autoPlay preload="auto" />
                   <div className="absolute top-3 left-3 bg-black/60 rounded-full px-2.5 py-1 flex items-center gap-1.5">
                     <CheckCircle size={12} className="text-green-400" />
                     <span className="text-white text-xs font-semibold">Tutorial · {formatTime(tutorialVideo.duration)}</span>
@@ -641,7 +669,6 @@ export default function CreatorUpload() {
                 className="w-full h-full object-contain"
                 playsInline
                 preload="auto"
-                crossOrigin="anonymous"
                 onTimeUpdate={() => setCurrentTime(tutorialVideoRef.current?.currentTime ?? 0)}
                 onLoadedMetadata={() => setDuration(tutorialVideoRef.current?.duration ?? 0)}
                 onPlay={() => setIsPlaying(true)}

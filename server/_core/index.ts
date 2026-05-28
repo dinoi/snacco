@@ -47,6 +47,11 @@ async function startServer() {
     if (req.path === "/api/upload-video") return next();
     express.urlencoded({ limit: "50mb", extended: true })(req, res, next);
   });
+  // Increase timeout for upload route to handle large files on slow mobile connections
+  app.use("/api/upload-video", (req, _res, next) => {
+    req.setTimeout(10 * 60 * 1000); // 10 minutes
+    next();
+  });
   registerGitHubOAuthRoutes(app);
   registerUploadRoute(app);
   

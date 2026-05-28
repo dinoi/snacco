@@ -530,7 +530,6 @@ export default function CreatorEdit() {
                     className="w-full h-full object-cover"
                     controls
                     preload="auto"
-                    crossOrigin="anonymous"
                   />
                   <button
                     onClick={() => setDemoVideo(null)}
@@ -599,7 +598,6 @@ export default function CreatorEdit() {
                     className="w-full h-full object-cover"
                     controls
                     preload="auto"
-                    crossOrigin="anonymous"
                   />
                   <button
                     onClick={() => setTutorialVideo(null)}
@@ -666,7 +664,6 @@ export default function CreatorEdit() {
                 className="w-full rounded-xl mb-4"
                 controls
                 preload="auto"
-                crossOrigin="anonymous"
                 onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
                 onDurationChange={(e) => setDuration(e.currentTarget.duration)}
                 onPlay={() => setIsPlaying(true)}

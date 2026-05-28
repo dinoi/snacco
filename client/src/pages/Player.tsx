@@ -167,7 +167,6 @@ export default function Player() {
           className="w-full h-full object-contain"
           playsInline
           preload="auto"
-          crossOrigin="anonymous"
           onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
           onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
           onPlay={() => setIsPlaying(true)}

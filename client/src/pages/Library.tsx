@@ -73,7 +73,6 @@ export default function Library() {
                 muted
                 playsInline
                 preload="auto"
-                crossOrigin="anonymous"
               />
               <div className="absolute inset-0 flex items-center justify-center bg-black/30">
                 <Play size={20} className="text-white fill-white" />

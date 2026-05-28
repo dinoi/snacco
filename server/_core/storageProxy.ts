@@ -9,39 +9,49 @@ export function registerStorageProxy(app: Express) {
       return;
     }
 
-    if (!ENV.forgeApiUrl || !ENV.forgeApiKey) {
-      res.status(500).send("Storage proxy not configured");
+    // If Railway provides a public URL, redirect there directly
+    const publicUrl = ENV.railwayStoragePublicUrl;
+    if (publicUrl) {
+      const url = `${publicUrl.replace(/\/+$/, "")}/${key}`;
+      res.set("Cache-Control", "public, max-age=86400");
+      res.redirect(307, url);
       return;
     }
 
+    // Otherwise, try Manus Forge API as fallback
+    if (ENV.forgeApiUrl && ENV.forgeApiKey) {
+      try {
+        const forgeUrl = new URL(
+          "v1/storage/presign/get",
+          ENV.forgeApiUrl.replace(/\/+$/, "") + "/"
+        );
+        forgeUrl.searchParams.set("path", key);
+
+        const forgeResp = await fetch(forgeUrl, {
+          headers: { Authorization: `Bearer ${ENV.forgeApiKey}` },
+        });
+
+        if (forgeResp.ok) {
+          const { url } = (await forgeResp.json()) as { url: string };
+          if (url) {
+            res.set("Cache-Control", "no-store");
+            res.redirect(307, url);
+            return;
+          }
+        }
+      } catch (err) {
+        console.error("[StorageProxy] Forge fallback failed:", err);
+      }
+    }
+
+    // Last resort: try Railway S3 signed URL
     try {
-      const forgeUrl = new URL(
-        "v1/storage/presign/get",
-        ENV.forgeApiUrl.replace(/\/+$/, "") + "/",
-      );
-      forgeUrl.searchParams.set("path", key);
-
-      const forgeResp = await fetch(forgeUrl, {
-        headers: { Authorization: `Bearer ${ENV.forgeApiKey}` },
-      });
-
-      if (!forgeResp.ok) {
-        const body = await forgeResp.text().catch(() => "");
-        console.error(`[StorageProxy] forge error: ${forgeResp.status} ${body}`);
-        res.status(502).send("Storage backend error");
-        return;
-      }
-
-      const { url } = (await forgeResp.json()) as { url: string };
-      if (!url) {
-        res.status(502).send("Empty signed URL from backend");
-        return;
-      }
-
-      res.set("Cache-Control", "no-store");
-      res.redirect(307, url);
+      const { storageGetSignedUrl } = await import("../storage");
+      const signedUrl = await storageGetSignedUrl(key);
+      res.set("Cache-Control", "public, max-age=3600");
+      res.redirect(307, signedUrl);
     } catch (err) {
-      console.error("[StorageProxy] failed:", err);
+      console.error("[StorageProxy] S3 signed URL failed:", err);
       res.status(502).send("Storage proxy error");
     }
   });
