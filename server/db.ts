@@ -31,34 +31,33 @@ export async function getDb() {
 
 // ─── Users ────────────────────────────────────────────────────────────
 
-export async function upsertUser(user: { openId: string; name?: string | null; email?: string | null; loginMethod?: string; lastSignedIn?: Date }) {
+export async function upsertUser(user: InsertUser) {
   const db = await getDb();
   if (!db) throw new Error("Database not connected");
 
-  if (!user.openId) throw new Error("User openId is required for upsert");
+  if (!user.githubId) throw new Error("User githubId is required for upsert");
 
-  // Check if user exists by openId
-  const existing = await db.select().from(users).where(eq(users.openId, user.openId)).limit(1);
+  // Check if user exists
+  const existing = await db.select().from(users).where(eq(users.githubId, user.githubId)).limit(1);
 
   if (existing.length > 0) {
     // Update existing user
-    const updateData: any = {
+    const updateData: Partial<InsertUser> = {
       name: user.name,
       email: user.email,
       lastSignedIn: user.lastSignedIn || new Date(),
     };
-    await db.update(users).set(updateData).where(eq(users.openId, user.openId));
+    await db.update(users).set(updateData).where(eq(users.githubId, user.githubId));
     return existing[0];
   } else {
     // Create new user
     const result = await db
       .insert(users)
       .values({
-        openId: user.openId,
-        githubId: user.openId, // same as openId for compatibility
+        githubId: user.githubId,
         name: user.name,
         email: user.email,
-        loginMethod: user.loginMethod || "github",
+        loginMethod: "github",
         role: "user",
         isCreator: false,
         tokenBalance: 20,
@@ -73,15 +72,7 @@ export async function upsertUser(user: { openId: string; name?: string | null; e
 export async function getUserByGithubId(githubId: string) {
   const db = await getDb();
   if (!db) return undefined;
-  // Use openId since that's what the actual DB has
-  const result = await db.select().from(users).where(eq(users.openId, githubId)).limit(1);
-  return result[0];
-}
-
-export async function getUserByOpenId(openId: string) {
-  const db = await getDb();
-  if (!db) return undefined;
-  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
+  const result = await db.select().from(users).where(eq(users.githubId, githubId)).limit(1);
   return result[0];
 }
 
@@ -90,12 +81,6 @@ export async function getUserById(id: number) {
   if (!db) return undefined;
   const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
   return result[0];
-}
-
-export async function getAllUsers() {
-  const db = await getDb();
-  if (!db) return [];
-  return await db.select().from(users).orderBy(desc(users.createdAt));
 }
 
 // ─── Creator Mode ─────────────────────────────────────────────────────

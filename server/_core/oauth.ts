@@ -32,7 +32,7 @@ export function registerOAuthRoutes(app: Express) {
         openId: userInfo.openId,
         name: userInfo.name || null,
         email: userInfo.email ?? null,
-        loginMethod: (userInfo.loginMethod ?? userInfo.platform ?? "unknown") as string,
+        loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
         lastSignedIn: new Date(),
       });
 

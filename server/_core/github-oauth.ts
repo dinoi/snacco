@@ -91,7 +91,7 @@ export function registerGitHubOAuthRoutes(app: Express) {
       };
 
       // Get email if not in user info
-      let email: string | null = userInfo.email || null;
+      let email = userInfo.email;
       if (!email) {
         const emailResponse = await fetch("https://api.github.com/user/emails", {
           headers: {
@@ -108,9 +108,9 @@ export function registerGitHubOAuthRoutes(app: Express) {
       }
 
       // Upsert user in database
-      const openId = `github_${userInfo.id}`;
+      const githubId = `github_${userInfo.id}`;
       const user = await db.upsertUser({
-        openId,
+        githubId,
         name: userInfo.name || userInfo.login,
         email: email || null,
         loginMethod: "github",
@@ -119,7 +119,7 @@ export function registerGitHubOAuthRoutes(app: Express) {
 
       // Create session token (JWT)
       const sessionToken = await createSessionToken(user.id, {
-        githubId: openId,
+        githubId,
         name: user.name || "",
         expiresInMs: ONE_YEAR_MS,
       });

@@ -7,8 +7,6 @@ export const ENV = {
   githubClientId: process.env.GITHUB_CLIENT_ID ?? "",
   githubClientSecret: process.env.GITHUB_CLIENT_SECRET ?? "",
   appUrl: process.env.APP_URL ?? "http://localhost:3000",
-  oAuthServerUrl: process.env.OAUTH_SERVER_URL ?? "",
-  appId: process.env.VITE_APP_ID ?? "",
 
   // Railway Object Storage (uses AWS SDK variable names)
   railwayStorageEndpoint: process.env.AWS_ENDPOINT_URL ?? process.env.RAILWAY_STORAGE_ENDPOINT ?? "",
@@ -24,6 +22,4 @@ export const ENV = {
   // App
   isProduction: process.env.NODE_ENV === "production",
   port: parseInt(process.env.PORT ?? "3000", 10),
-  ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
-  ownerName: process.env.OWNER_NAME ?? "",
 };
