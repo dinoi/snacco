@@ -51,6 +51,7 @@ export async function compressVideo(
   const video = document.createElement("video");
   video.muted = true;
   video.playsInline = true;
+  video.preload = "auto";
   const videoUrl = URL.createObjectURL(file);
   video.src = videoUrl;
 
@@ -58,6 +59,8 @@ export async function compressVideo(
   await new Promise<void>((resolve, reject) => {
     video.onloadedmetadata = () => resolve();
     video.onerror = () => reject(new Error("Failed to load video metadata"));
+    // Safety timeout for metadata loading
+    setTimeout(() => reject(new Error("Timeout loading video metadata")), 15000);
   });
 
   const duration = video.duration;
@@ -90,8 +93,9 @@ export async function compressVideo(
 
   // Try to capture audio from the video
   let combinedStream: MediaStream;
+  let audioCtx: AudioContext | null = null;
   try {
-    const audioCtx = new AudioContext();
+    audioCtx = new AudioContext();
     const source = audioCtx.createMediaElementSource(video);
     const dest = audioCtx.createMediaStreamDestination();
     source.connect(dest);
@@ -126,51 +130,114 @@ export async function compressVideo(
   };
 
   // Start recording
-  const recordingDone = new Promise<Blob>((resolve) => {
-    recorder.onstop = () => {
-      const blob = new Blob(chunks, { type: mimeType });
-      resolve(blob);
-    };
-  });
-
   recorder.start(100); // collect data every 100ms
 
   // Play video and draw frames to canvas
   video.currentTime = 0;
   await video.play();
 
-  // Animation loop: draw video frames to canvas
-  let lastProgress = 0;
-  const drawFrame = () => {
-    if (video.ended || video.paused) return;
-    ctx.drawImage(video, 0, 0, outWidth, outHeight);
+  // Use a combined approach for end detection:
+  // 1. timeupdate polling to detect when we're near the end
+  // 2. onended event as primary signal
+  // 3. Safety timeout as ultimate fallback
+  const blob = await new Promise<Blob>((resolve) => {
+    let animFrameId: number;
+    let resolved = false;
+    let lastTimeUpdate = Date.now();
 
-    // Report progress
-    if (onProgress && duration > 0) {
-      const progress = Math.min(video.currentTime / duration, 1);
-      if (progress - lastProgress > 0.01) {
-        lastProgress = progress;
-        onProgress(progress);
+    const finalize = () => {
+      if (resolved) return;
+      resolved = true;
+      cancelAnimationFrame(animFrameId);
+      video.pause();
+
+      // Request final data and stop
+      if (recorder.state === "recording") {
+        recorder.requestData(); // flush any remaining data
+        recorder.onstop = () => {
+          const finalBlob = new Blob(chunks, { type: mimeType });
+          onProgress?.(1);
+          resolve(finalBlob);
+        };
+        // Small delay to let requestData flush, then stop
+        setTimeout(() => {
+          if (recorder.state === "recording") {
+            recorder.stop();
+          }
+        }, 200);
+      } else {
+        const finalBlob = new Blob(chunks, { type: mimeType });
+        onProgress?.(1);
+        resolve(finalBlob);
       }
-    }
+    };
 
-    requestAnimationFrame(drawFrame);
-  };
-  requestAnimationFrame(drawFrame);
+    // Primary end detection: video ended event
+    video.onended = () => {
+      // Draw the last frame
+      ctx.drawImage(video, 0, 0, outWidth, outHeight);
+      // Give a small buffer for the last chunks to be captured
+      setTimeout(finalize, 300);
+    };
 
-  // Wait for video to finish playing
-  await new Promise<void>((resolve) => {
-    video.onended = () => resolve();
+    // Secondary: timeupdate-based detection
+    // On mobile Safari, onended sometimes doesn't fire
+    video.ontimeupdate = () => {
+      lastTimeUpdate = Date.now();
+      // If we're within 0.1s of the end, trigger finalize
+      if (duration > 0 && video.currentTime >= duration - 0.1) {
+        // Draw final frame
+        ctx.drawImage(video, 0, 0, outWidth, outHeight);
+        setTimeout(finalize, 500);
+      }
+    };
+
+    // Safety timeout: if video playback stalls near the end
+    const safetyInterval = setInterval(() => {
+      // If no timeupdate for 3 seconds and we're past 90% progress, finalize
+      if (Date.now() - lastTimeUpdate > 3000 && duration > 0) {
+        const progress = video.currentTime / duration;
+        if (progress > 0.9) {
+          clearInterval(safetyInterval);
+          finalize();
+        }
+      }
+      // Absolute safety: if total time exceeds 3x video duration, finalize
+      if (duration > 0 && Date.now() - lastTimeUpdate > duration * 3000 + 10000) {
+        clearInterval(safetyInterval);
+        finalize();
+      }
+    }, 1000);
+
+    // Animation loop: draw video frames to canvas
+    let lastProgress = 0;
+    const drawFrame = () => {
+      if (resolved) return;
+      if (!video.ended && !video.paused) {
+        ctx.drawImage(video, 0, 0, outWidth, outHeight);
+      }
+
+      // Report progress (cap at 0.95 until finalize sets it to 1)
+      if (onProgress && duration > 0) {
+        const progress = Math.min(video.currentTime / duration, 0.95);
+        if (progress - lastProgress > 0.01) {
+          lastProgress = progress;
+          onProgress(progress);
+        }
+      }
+
+      animFrameId = requestAnimationFrame(drawFrame);
+    };
+    animFrameId = requestAnimationFrame(drawFrame);
   });
-
-  // Stop recording
-  recorder.stop();
-  const blob = await recordingDone;
 
   // Cleanup
   URL.revokeObjectURL(videoUrl);
   video.remove();
   canvas.remove();
+  if (audioCtx) {
+    try { audioCtx.close(); } catch { /* ignore */ }
+  }
 
   const compressedSize = blob.size;
 
