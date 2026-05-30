@@ -69,15 +69,22 @@ export async function upsertUser(user: InsertUser) {
   }
 }
 
-export async function getUserByGithubId(githubId: string) {
-  return getUserByOpenId(githubId);
-}
-
 export async function getUserByOpenId(openId: string) {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
   return result[0];
+}
+
+// Alias for backward compatibility
+export async function getUserByGithubId(githubId: string) {
+  return getUserByOpenId(githubId);
+}
+
+export async function getAllUsers() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(users).orderBy(desc(users.createdAt));
 }
 
 export async function getUserById(id: number) {
@@ -291,12 +298,6 @@ export async function setTutorialPublished(tutorialId: number, isPublished: bool
   const db = await getDb();
   if (!db) return;
   await db.update(tutorials).set({ isPublished }).where(eq(tutorials.id, tutorialId));
-}
-
-export async function getAllUsers() {
-  const db = await getDb();
-  if (!db) return [];
-  return await db.select().from(users).orderBy(desc(users.createdAt));
 }
 
 export async function getTotalUsers() {
