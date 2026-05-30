@@ -139,3 +139,9 @@
 - [x] Fix video proxy - switch to presigned URL redirect (streaming approach not working for video playback)
 - [x] Raise CTA buttons higher on Feed and TutorialDetail so they're above the fold
 - [x] Add IntersectionObserver to auto-play/pause videos as they scroll into view
+
+## v1.47 - Video Performance
+
+- [x] Return presigned S3 URLs directly from tRPC procedures (eliminate redirect hop)
+- [x] Smart preloading: preload=metadata for off-screen videos, preload=auto for visible
+- [x] Add poster/thumbnail frame support (uses preload=metadata first frame; DB thumbnail column deferred)

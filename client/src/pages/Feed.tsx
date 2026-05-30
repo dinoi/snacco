@@ -5,11 +5,12 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VersionBadge } from "@/components/VersionBadge";
-import { useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect, useState } from "react";
 
-function FeedCard({ tutorial, onNavigate }: { tutorial: any; onNavigate: (path: string) => void }) {
+function FeedCard({ tutorial, onNavigate, index }: { tutorial: any; onNavigate: (path: string) => void; index: number }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(index === 0); // First card starts visible
 
   useEffect(() => {
     const video = videoRef.current;
@@ -19,9 +20,12 @@ function FeedCard({ tutorial, onNavigate }: { tutorial: any; onNavigate: (path: 
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
+          setIsVisible(true);
           video.play().catch(() => {});
         } else {
+          setIsVisible(false);
           video.pause();
+          video.currentTime = 0; // Reset so it starts fresh when scrolled back
         }
       },
       { threshold: 0.6 }
@@ -45,7 +49,8 @@ function FeedCard({ tutorial, onNavigate }: { tutorial: any; onNavigate: (path: 
         muted
         loop
         playsInline
-        preload="auto"
+        preload={isVisible ? "auto" : "metadata"}
+        // poster frame comes from preload="metadata" loading the first frame
         onError={e => {
           const vid = e.currentTarget as HTMLVideoElement;
           console.error('[Feed] Video load error:', vid.src, vid.error?.message);
@@ -121,8 +126,8 @@ export default function Feed() {
       )}
 
       {/* Feed cards */}
-      {tutorials?.map((tutorial) => (
-        <FeedCard key={tutorial.id} tutorial={tutorial} onNavigate={navigate} />
+      {tutorials?.map((tutorial, index) => (
+        <FeedCard key={tutorial.id} tutorial={tutorial} onNavigate={navigate} index={index} />
       ))}
     </div>
   );
