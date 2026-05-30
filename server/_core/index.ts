@@ -11,7 +11,9 @@ import { createContext } from "./context-github";
 import { serveStatic, setupVite } from "./vite";
 import { registerUploadRoute } from "../uploadRoute-railway";
 import { ENV } from "./env";
-import { getLocalFilePath, getS3Client, storageGetSignedUrl } from "../railway-storage";
+import { getLocalFilePath, getS3Client } from "../railway-storage";
+import { GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
+import { Readable } from "stream";
 import fs from "fs";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -64,7 +66,7 @@ async function startServer() {
     res.sendFile(filePath);
   });
 
-  // Video proxy: redirect to presigned S3 URL for direct browser streaming
+  // Video proxy: stream from S3 with Range support and browser caching
   app.get("/api/video/:key(*)", async (req: Request, res: Response) => {
     const key = req.params.key;
     if (!key) return res.status(400).json({ error: "Missing key" });
@@ -75,13 +77,99 @@ async function startServer() {
       return res.sendFile(localPath);
     }
 
-    // Redirect to presigned S3 URL — browser gets direct access with full Range support
     try {
-      const signedUrl = await storageGetSignedUrl(key, 3600); // 1 hour expiry
-      return res.redirect(302, signedUrl);
+      const client = getS3Client();
+      const bucket = ENV.railwayStorageBucket;
+
+      // First, get the object metadata (size, content-type)
+      const headCmd = new HeadObjectCommand({ Bucket: bucket, Key: key });
+      const headResp = await client.send(headCmd);
+      const totalSize = headResp.ContentLength ?? 0;
+      const contentType = headResp.ContentType ?? "video/mp4";
+
+      // Cache for 24 hours — stable URL means browser can reuse across pages
+      res.setHeader("Cache-Control", "public, max-age=86400, immutable");
+      res.setHeader("Accept-Ranges", "bytes");
+      res.setHeader("Content-Type", contentType);
+
+      // Handle zero-size objects
+      if (totalSize === 0) {
+        res.status(200);
+        res.setHeader("Content-Length", 0);
+        res.end();
+        return;
+      }
+
+      const rangeHeader = req.headers.range;
+
+      if (rangeHeader) {
+        // Parse Range header: "bytes=start-end"
+        const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+        if (!match) {
+          res.status(416);
+          res.setHeader("Content-Range", `bytes */${totalSize}`);
+          res.json({ error: "Invalid range" });
+          return;
+        }
+        const start = parseInt(match[1], 10);
+        // Clamp end to totalSize - 1; default to totalSize - 1 if not specified
+        const rawEnd = match[2] ? parseInt(match[2], 10) : totalSize - 1;
+        const end = Math.min(rawEnd, totalSize - 1);
+
+        // Validate: start must be within bounds and not exceed end
+        if (start >= totalSize || start > end) {
+          res.status(416);
+          res.setHeader("Content-Range", `bytes */${totalSize}`);
+          res.json({ error: "Range not satisfiable" });
+          return;
+        }
+
+        const chunkSize = end - start + 1;
+
+        // Fetch the range from S3
+        const getCmd = new GetObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Range: `bytes=${start}-${end}`,
+        });
+        const getResp = await client.send(getCmd);
+
+        res.status(206);
+        res.setHeader("Content-Range", `bytes ${start}-${end}/${totalSize}`);
+        res.setHeader("Content-Length", chunkSize);
+
+        // Pipe the S3 stream directly to the response (no buffering)
+        if (getResp.Body && typeof (getResp.Body as any).pipe === "function") {
+          (getResp.Body as Readable).pipe(res);
+        } else if (getResp.Body) {
+          // Fallback: convert to web stream then to node stream
+          const webStream = (getResp.Body as any).transformToWebStream();
+          Readable.fromWeb(webStream as any).pipe(res);
+        } else {
+          res.status(500).json({ error: "Empty S3 response" });
+        }
+      } else {
+        // Full request (no Range header)
+        const getCmd = new GetObjectCommand({ Bucket: bucket, Key: key });
+        const getResp = await client.send(getCmd);
+
+        res.status(200);
+        res.setHeader("Content-Length", totalSize);
+
+        if (getResp.Body && typeof (getResp.Body as any).pipe === "function") {
+          (getResp.Body as Readable).pipe(res);
+        } else if (getResp.Body) {
+          const webStream = (getResp.Body as any).transformToWebStream();
+          Readable.fromWeb(webStream as any).pipe(res);
+        } else {
+          res.status(500).json({ error: "Empty S3 response" });
+        }
+      }
     } catch (err: any) {
-      console.error("[VideoProxy] Error generating signed URL:", key, err?.message);
-      return res.status(404).json({ error: "Video not found" });
+      console.error("[VideoProxy] Error streaming:", key, err?.message);
+      if (!res.headersSent) {
+        res.status(404).json({ error: "Video not found" });
+      }
     }
   });
   // tRPC API

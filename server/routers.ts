@@ -30,39 +30,20 @@ const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
 
 // ─── Video URL resolver ──────────────────────────────────────────────────
 // Railway S3 buckets are private — no public URLs exist.
-// Generate presigned URLs directly so the browser streams from S3 without a redirect hop.
-import { storageGetSignedUrl } from "./railway-storage";
+// Return stable /api/video/{key} proxy URLs so the browser can cache them
+// across feed ↔ detail page navigation (same URL = same cache entry).
 
-// ─── Presigned URL cache (avoids regenerating on every request) ──────────────
-// Cache entries expire after 50 minutes (presigned URLs valid for 60 min)
-const presignedCache = new Map<string, { url: string; expiresAt: number }>();
-const CACHE_TTL_MS = 50 * 60 * 1000; // 50 minutes
-
-async function getCachedPresignedUrl(key: string): Promise<string> {
-  const now = Date.now();
-  const cached = presignedCache.get(key);
-  if (cached && cached.expiresAt > now) {
-    return cached.url;
-  }
-  const url = await storageGetSignedUrl(key, 3600);
-  presignedCache.set(key, { url, expiresAt: now + CACHE_TTL_MS });
-  return url;
-}
-
-async function resolveVideoUrl<T extends { demoVideoUrl: string; demoVideoKey: string; tutorialVideoUrl: string; tutorialVideoKey: string }>(tutorial: T): Promise<T> {
-  const [demoUrl, tutorialUrl] = await Promise.all([
-    tutorial.demoVideoKey
-      ? getCachedPresignedUrl(tutorial.demoVideoKey).catch(() => `/api/video/${tutorial.demoVideoKey}`)
-      : Promise.resolve(tutorial.demoVideoUrl),
-    tutorial.tutorialVideoKey
-      ? getCachedPresignedUrl(tutorial.tutorialVideoKey).catch(() => `/api/video/${tutorial.tutorialVideoKey}`)
-      : Promise.resolve(tutorial.tutorialVideoUrl),
-  ]);
-  // Append #t=0.001 to force mobile browsers to load the first frame immediately
+function resolveVideoUrl<T extends { demoVideoUrl: string; demoVideoKey: string; tutorialVideoUrl: string; tutorialVideoKey: string }>(tutorial: T): T {
+  const demoUrl = tutorial.demoVideoKey
+    ? `/api/video/${tutorial.demoVideoKey}#t=0.001`
+    : tutorial.demoVideoUrl;
+  const tutorialUrl = tutorial.tutorialVideoKey
+    ? `/api/video/${tutorial.tutorialVideoKey}#t=0.001`
+    : tutorial.tutorialVideoUrl;
   return {
     ...tutorial,
-    demoVideoUrl: demoUrl + (demoUrl.startsWith('http') ? '#t=0.001' : ''),
-    tutorialVideoUrl: tutorialUrl + (tutorialUrl.startsWith('http') ? '#t=0.001' : ''),
+    demoVideoUrl: demoUrl,
+    tutorialVideoUrl: tutorialUrl,
   };
 }
 
@@ -129,7 +110,7 @@ export const appRouter = router({
     // Public feed
     feed: publicProcedure.query(async () => {
       const tutorials = await db.getPublishedTutorials();
-      return Promise.all(tutorials.map(resolveVideoUrl));
+      return tutorials.map(resolveVideoUrl);
     }),
 
     // Single tutorial detail
@@ -138,7 +119,7 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const tutorial = await db.getTutorialById(input.id);
         if (!tutorial) throw new TRPCError({ code: "NOT_FOUND" });
-        return await resolveVideoUrl(tutorial);
+        return resolveVideoUrl(tutorial);
       }),
 
     // Chapters for a tutorial
@@ -180,13 +161,13 @@ export const appRouter = router({
     // Library: all unlocked tutorials for current user
     library: protectedProcedure.query(async ({ ctx }) => {
       const tutorials = await db.getUnlockedTutorials(ctx.user.id);
-      return Promise.all(tutorials.map(resolveVideoUrl));
+      return tutorials.map(resolveVideoUrl);
     }),
 
     // Creator: get my tutorials
     myTutorials: protectedProcedure.query(async ({ ctx }) => {
       const tutorials = await db.getTutorialsByCreator(ctx.user.id);
-      return Promise.all(tutorials.map(resolveVideoUrl));
+      return tutorials.map(resolveVideoUrl);
     }),
 
     // ── Chunked upload: receive one chunk at a time ──────────────────
@@ -406,7 +387,7 @@ export const appRouter = router({
     // Admin: list all tutorials
     adminList: adminProcedure.query(async () => {
       const tutorials = await db.getAllTutorials();
-      return Promise.all(tutorials.map(resolveVideoUrl));
+      return tutorials.map(resolveVideoUrl);
     }),
 
     // Admin: toggle publish status

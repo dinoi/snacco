@@ -5,15 +5,17 @@
  * This is critical for mobile Safari which throttles/pauses offscreen video playback.
  * 
  * How it works:
- * 1. Seek to each frame position (at 30fps intervals)
+ * 1. Seek to each frame position (at target fps intervals)
  * 2. Wait for the seek to complete
  * 3. Draw the frame to canvas
- * 4. The MediaRecorder captures from the canvas stream
+ * 4. Request a frame capture via captureStream
  * 5. After all frames, stop recording and return the blob
  *
- * Typical results:
- * - 19MB phone recording → ~2-3MB compressed
- * - 50MB 2-min tutorial → ~8-12MB compressed
+ * Frame timing fix: We use captureStream(0) with manual requestFrame() calls.
+ * The MediaRecorder timestamps each frame based on when requestFrame() is called.
+ * We use a minimal delay (5ms) between frames — just enough for the recorder to
+ * process each frame. The output video duration is determined by the total elapsed
+ * real-time between start and stop, so we DON'T add artificial delays per frame.
  */
 
 export interface CompressOptions {
@@ -25,7 +27,7 @@ export interface CompressOptions {
   maxWidth?: number;
   /** Max height (maintains aspect ratio). Default: 1920 */
   maxHeight?: number;
-  /** Output framerate. Default: 30 */
+  /** Output framerate. Default: 24 */
   fps?: number;
   /** Progress callback (0-1) */
   onProgress?: (progress: number) => void;
@@ -108,7 +110,7 @@ export async function compressVideo(
   await waitForSeek(video);
   ctx.drawImage(video, 0, 0, outWidth, outHeight);
 
-  // Get canvas stream — use manual frame mode (0 fps = only updates on drawImage)
+  // Get canvas stream — use manual frame mode (0 fps = only updates on requestFrame)
   const canvasStream = canvas.captureStream(0);
   const videoTrack = canvasStream.getVideoTracks()[0] as any;
 
@@ -139,11 +141,21 @@ export async function compressVideo(
   recorder.start(500); // collect data every 500ms
 
   // Frame-by-frame processing
+  // The key insight: MediaRecorder uses WALL CLOCK TIME to determine frame duration.
+  // With captureStream(0) + requestFrame(), each frame's duration in the output is
+  // the real-time gap between consecutive requestFrame() calls.
+  // 
+  // To get correct playback speed, we need each frame to last exactly (1/fps) seconds
+  // in the output. So we space requestFrame() calls by exactly (1000/fps) ms of real time.
+  // The seek+draw happens as fast as possible, then we wait for the remainder of the frame interval.
   const frameInterval = 1 / fps;
+  const frameIntervalMs = 1000 / fps; // ~41.67ms for 24fps
   const totalFrames = Math.ceil(duration * fps);
   let processedFrames = 0;
 
   for (let frameTime = 0; frameTime < duration; frameTime += frameInterval) {
+    const frameStartTime = performance.now();
+
     // Seek to the frame position
     video.currentTime = Math.min(frameTime, duration - 0.01);
     await waitForSeek(video);
@@ -156,8 +168,13 @@ export async function compressVideo(
       videoTrack.requestFrame();
     }
 
-    // Small delay to let MediaRecorder capture the frame
-    await sleep(1000 / fps);
+    // Wait for the remainder of the frame interval to maintain correct playback speed.
+    // If seek+draw took longer than one frame interval, don't wait (just continue).
+    const elapsed = performance.now() - frameStartTime;
+    const remainingMs = frameIntervalMs - elapsed;
+    if (remainingMs > 1) {
+      await sleep(remainingMs);
+    }
 
     // Report progress
     processedFrames++;
@@ -173,7 +190,7 @@ export async function compressVideo(
   if (videoTrack && typeof videoTrack.requestFrame === "function") {
     videoTrack.requestFrame();
   }
-  await sleep(100);
+  await sleep(frameIntervalMs); // One more frame interval for the last frame
 
   // Stop recording and wait for blob
   recorder.stop();

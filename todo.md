@@ -157,3 +157,10 @@
 - [x] Client-side video compression before upload (target ~4Mbps bitrate, reduce 19MB to ~2-3MB)
 - [x] Integrate compression into CreatorUpload with progress indicator
 - [x] Add stall recovery to Feed player (retry .play() on stalled event)
+
+## v1.51 - Streaming Proxy + Compression Fix
+
+- [x] Fix compression half-speed playback (frame timing mismatch in MediaRecorder)
+- [x] Replace presigned URL redirect with proper streaming proxy (pipe S3 stream with Range support, 24h cache headers)
+- [x] Use stable /api/video/{key} URLs so browser can cache across pages (removed presigned URL cache)
+- [ ] Fix demo thumbnail being overwritten by tutorial video thumbnail (DEFERRED)
