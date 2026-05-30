@@ -177,3 +177,9 @@
 
 - [x] Fix slow video playback start in Feed (metadata cache eliminates HeadObject round trip, skip HeadObject for non-Range)
 - [x] Add TikTok-style vertical swipe navigation with 50% threshold snap, rubber-band edges, slide indicators
+
+## v1.54 - Feed Polish
+
+- [x] Add swipe velocity detection — snap based on flick speed (>0.4px/ms) OR 50% distance threshold
+- [x] Add video loading skeleton — blurred thumbnail + spinner while video buffers (Feed + TutorialDetail)
+- [x] Keep Feed mounted when navigating to tutorial detail — videos stay buffered, instant back navigation

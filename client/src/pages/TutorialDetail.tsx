@@ -8,7 +8,26 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatTime } from "@/lib/utils";
 import { VersionBadge } from "@/components/VersionBadge";
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
+
+// ── Video loading skeleton ──────────────────────────────────────────
+function VideoLoadingSkeleton({ thumbnailUrl }: { thumbnailUrl?: string }) {
+  return (
+    <div className="absolute inset-0 w-full h-full bg-black z-5">
+      {thumbnailUrl ? (
+        <img
+          src={thumbnailUrl}
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover blur-md scale-105 opacity-60"
+        />
+      ) : null}
+      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60" />
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="w-12 h-12 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+      </div>
+    </div>
+  );
+}
 
 export default function TutorialDetail() {
   const { id } = useParams<{ id: string }>();
@@ -18,6 +37,7 @@ export default function TutorialDetail() {
   const utils = trpc.useUtils();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isMuted, setIsMuted] = useState(true);
+  const [isVideoLoading, setIsVideoLoading] = useState(true);
 
   const { data: tutorial, isLoading } = trpc.tutorials.get.useQuery({ id: tutorialId });
   const { data: chapters } = trpc.tutorials.getChapters.useQuery({ tutorialId });
@@ -55,6 +75,29 @@ export default function TutorialDetail() {
     }
   }, [isMuted]);
 
+  // Track video loading state
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handleCanPlay = () => setIsVideoLoading(false);
+    const handleWaiting = () => setIsVideoLoading(true);
+    const handlePlaying = () => setIsVideoLoading(false);
+
+    video.addEventListener("canplay", handleCanPlay);
+    video.addEventListener("waiting", handleWaiting);
+    video.addEventListener("playing", handlePlaying);
+
+    // If video is already ready (served from browser cache)
+    if (video.readyState >= 3) setIsVideoLoading(false);
+
+    return () => {
+      video.removeEventListener("canplay", handleCanPlay);
+      video.removeEventListener("waiting", handleWaiting);
+      video.removeEventListener("playing", handlePlaying);
+    };
+  }, [tutorial?.demoVideoUrl]);
+
   if (isLoading) {
     return (
       <div className="min-h-dvh bg-black flex items-center justify-center">
@@ -78,7 +121,12 @@ export default function TutorialDetail() {
     <div className="min-h-dvh bg-black">
       {/* Video section — fills viewport */}
       <div className="relative h-dvh w-full">
-        {/* Full-screen video background */}
+        {/* Loading skeleton — shows while video is buffering */}
+        {isVideoLoading && (
+          <VideoLoadingSkeleton thumbnailUrl={(tutorial as any).thumbnailUrl} />
+        )}
+
+        {/* Full-screen video background — same URL as Feed for browser cache hit */}
         <video
           ref={videoRef}
           src={tutorial.demoVideoUrl}
@@ -132,7 +180,7 @@ export default function TutorialDetail() {
 
           {/* Creator */}
           <p className="text-white/70 text-sm mt-2">
-            by <span className="text-white font-medium">{tutorial.creatorName ?? "Creator"}</span>
+            by <span className="text-white font-medium">{(tutorial as any).creatorName ?? "Creator"}</span>
           </p>
 
           {/* Description */}

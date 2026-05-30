@@ -15,6 +15,26 @@ function setGlobalMuted(muted: boolean) {
   muteListeners.forEach((fn) => fn(muted));
 }
 
+// ── Video loading skeleton ──────────────────────────────────────────
+function VideoLoadingSkeleton({ thumbnailUrl }: { thumbnailUrl?: string }) {
+  return (
+    <div className="absolute inset-0 w-full h-full bg-black z-5">
+      {thumbnailUrl ? (
+        <img
+          src={thumbnailUrl}
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover blur-md scale-105 opacity-60"
+        />
+      ) : null}
+      {/* Shimmer overlay */}
+      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60" />
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="w-12 h-12 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+      </div>
+    </div>
+  );
+}
+
 // ── Individual video card ───────────────────────────────────────────
 function FeedCard({
   tutorial,
@@ -29,6 +49,7 @@ function FeedCard({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isMuted, setIsMuted] = useState(globalMuted);
+  const [isVideoLoading, setIsVideoLoading] = useState(true);
 
   // Subscribe to global mute state
   useEffect(() => {
@@ -47,13 +68,35 @@ function FeedCard({
 
     if (isActive) {
       video.muted = globalMuted;
-      // Reset to start for instant playback
       if (video.currentTime > 0.5) video.currentTime = 0;
       video.play().catch(() => {});
     } else {
       video.pause();
     }
   }, [isActive]);
+
+  // Track video loading state
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handleCanPlay = () => setIsVideoLoading(false);
+    const handleWaiting = () => setIsVideoLoading(true);
+    const handlePlaying = () => setIsVideoLoading(false);
+
+    video.addEventListener("canplay", handleCanPlay);
+    video.addEventListener("waiting", handleWaiting);
+    video.addEventListener("playing", handlePlaying);
+
+    // If video is already ready
+    if (video.readyState >= 3) setIsVideoLoading(false);
+
+    return () => {
+      video.removeEventListener("canplay", handleCanPlay);
+      video.removeEventListener("waiting", handleWaiting);
+      video.removeEventListener("playing", handlePlaying);
+    };
+  }, []);
 
   // Stall recovery
   useEffect(() => {
@@ -87,6 +130,11 @@ function FeedCard({
       className="absolute inset-0 w-full h-full"
       onClick={() => onNavigate(`/tutorial/${tutorial.id}`)}
     >
+      {/* Loading skeleton — shows while video is buffering */}
+      {isVideoLoading && isActive && (
+        <VideoLoadingSkeleton thumbnailUrl={tutorial.thumbnailUrl} />
+      )}
+
       {/* Video — preload adjacent slides, autoplay active one */}
       <video
         ref={videoRef}
@@ -150,11 +198,19 @@ function FeedCard({
   );
 }
 
+// ── Velocity threshold constants ────────────────────────────────────
+const DISTANCE_THRESHOLD = 0.5; // 50% of viewport for slow drags
+const VELOCITY_THRESHOLD = 0.4; // px/ms — a quick flick above this snaps regardless of distance
+const MIN_DISTANCE_FOR_VELOCITY = 30; // px — minimum drag distance before velocity kicks in
+
 // ── TikTok-style swipe container ────────────────────────────────────
 export default function Feed() {
   const { data: tutorials, isLoading } = trpc.tutorials.feed.useQuery();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const { isAuthenticated } = useAuth();
+
+  // Feed stays mounted when on /tutorial/:id — detect visibility for pause/resume
+  const isFeedVisible = location === "/";
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [translateY, setTranslateY] = useState(0);
@@ -162,6 +218,7 @@ export default function Feed() {
 
   // Touch tracking refs (not state — no re-renders during drag)
   const touchStartY = useRef(0);
+  const touchStartTime = useRef(0);
   const touchDeltaY = useRef(0);
   const isDragging = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -174,16 +231,37 @@ export default function Feed() {
       setIsAnimating(true);
       setCurrentIndex(index);
       setTranslateY(0);
-      // Allow animation to finish
       setTimeout(() => setIsAnimating(false), 320);
     },
     [totalSlides, isAnimating]
   );
 
+  // Determine whether to snap based on distance OR velocity
+  const shouldSnap = useCallback((delta: number, elapsed: number): "next" | "prev" | null => {
+    const absDelta = Math.abs(delta);
+    const viewportH = window.innerHeight;
+
+    // Velocity-based: quick flick with minimum distance
+    if (absDelta > MIN_DISTANCE_FOR_VELOCITY && elapsed > 0) {
+      const velocity = absDelta / elapsed; // px/ms
+      if (velocity > VELOCITY_THRESHOLD) {
+        return delta < 0 ? "next" : "prev";
+      }
+    }
+
+    // Distance-based: slow drag past 50% threshold
+    if (absDelta > viewportH * DISTANCE_THRESHOLD) {
+      return delta < 0 ? "next" : "prev";
+    }
+
+    return null;
+  }, []);
+
   // ── Touch handlers ─────────────────────────────────────────────────
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (isAnimating) return;
     touchStartY.current = e.touches[0].clientY;
+    touchStartTime.current = Date.now();
     touchDeltaY.current = 0;
     isDragging.current = true;
   }, [isAnimating]);
@@ -193,7 +271,7 @@ export default function Feed() {
     const delta = e.touches[0].clientY - touchStartY.current;
     touchDeltaY.current = delta;
 
-    // Rubber-band at edges: reduce movement by 70%
+    // Rubber-band at edges
     const atTop = currentIndex === 0 && delta > 0;
     const atBottom = currentIndex === totalSlides - 1 && delta < 0;
     const dampened = atTop || atBottom ? delta * 0.3 : delta;
@@ -205,26 +283,24 @@ export default function Feed() {
     if (!isDragging.current) return;
     isDragging.current = false;
 
-    const viewportH = window.innerHeight;
-    const threshold = viewportH * 0.5; // 50% of screen = snap (as requested)
     const delta = touchDeltaY.current;
+    const elapsed = Date.now() - touchStartTime.current;
+    const direction = shouldSnap(delta, elapsed);
 
-    if (delta < -threshold && currentIndex < totalSlides - 1) {
-      // Swiped up → next
+    if (direction === "next" && currentIndex < totalSlides - 1) {
       goToSlide(currentIndex + 1);
-    } else if (delta > threshold && currentIndex > 0) {
-      // Swiped down → previous
+    } else if (direction === "prev" && currentIndex > 0) {
       goToSlide(currentIndex - 1);
     } else {
-      // Snap back
       setTranslateY(0);
     }
-  }, [currentIndex, totalSlides, goToSlide]);
+  }, [currentIndex, totalSlides, goToSlide, shouldSnap]);
 
   // ── Mouse drag for desktop testing ─────────────────────────────────
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (isAnimating) return;
     touchStartY.current = e.clientY;
+    touchStartTime.current = Date.now();
     touchDeltaY.current = 0;
     isDragging.current = true;
   }, [isAnimating]);
@@ -242,18 +318,19 @@ export default function Feed() {
   const handleMouseUp = useCallback(() => {
     if (!isDragging.current) return;
     isDragging.current = false;
-    const viewportH = window.innerHeight;
-    const threshold = viewportH * 0.5;
-    const delta = touchDeltaY.current;
 
-    if (delta < -threshold && currentIndex < totalSlides - 1) {
+    const delta = touchDeltaY.current;
+    const elapsed = Date.now() - touchStartTime.current;
+    const direction = shouldSnap(delta, elapsed);
+
+    if (direction === "next" && currentIndex < totalSlides - 1) {
       goToSlide(currentIndex + 1);
-    } else if (delta > threshold && currentIndex > 0) {
+    } else if (direction === "prev" && currentIndex > 0) {
       goToSlide(currentIndex - 1);
     } else {
       setTranslateY(0);
     }
-  }, [currentIndex, totalSlides, goToSlide]);
+  }, [currentIndex, totalSlides, goToSlide, shouldSnap]);
 
   // Clean up if mouse leaves window while dragging
   useEffect(() => {
@@ -321,7 +398,7 @@ export default function Feed() {
 
             const baseY = offset * 100; // percentage
             const dragPx = translateY;
-            const isActive = offset === 0;
+            const isActive = offset === 0 && isFeedVisible;
 
             return (
               <div
