@@ -11,9 +11,7 @@ import { createContext } from "./context-github";
 import { serveStatic, setupVite } from "./vite";
 import { registerUploadRoute } from "../uploadRoute-railway";
 import { ENV } from "./env";
-import { getLocalFilePath, getS3Client } from "../railway-storage";
-import { GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
-import { Readable } from "stream";
+import { getLocalFilePath, getS3Client, storageGetSignedUrl } from "../railway-storage";
 import fs from "fs";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -66,7 +64,7 @@ async function startServer() {
     res.sendFile(filePath);
   });
 
-  // Video proxy: stream videos from Railway S3 private bucket
+  // Video proxy: redirect to presigned S3 URL for direct browser streaming
   app.get("/api/video/:key(*)", async (req: Request, res: Response) => {
     const key = req.params.key;
     if (!key) return res.status(400).json({ error: "Missing key" });
@@ -77,100 +75,13 @@ async function startServer() {
       return res.sendFile(localPath);
     }
 
-    // Stream from Railway S3
-    if (!ENV.railwayStorageEndpoint || !ENV.railwayAccessKeyId || !ENV.railwaySecretAccessKey) {
-      return res.status(500).json({ error: "Storage not configured" });
-    }
-
+    // Redirect to presigned S3 URL — browser gets direct access with full Range support
     try {
-      const s3 = getS3Client();
-      const rangeHeader = req.headers.range;
-
-      // First, get the object metadata to know total size
-      // This is critical for video playback — browsers need Content-Length
-      const headCommand = new HeadObjectCommand({
-        Bucket: ENV.railwayStorageBucket,
-        Key: key,
-      });
-      const headResponse = await s3.send(headCommand);
-      const totalSize = headResponse.ContentLength ?? 0;
-      const contentType = headResponse.ContentType || "video/mp4";
-
-      if (rangeHeader) {
-        // Parse Range header: "bytes=start-end"
-        const parts = rangeHeader.replace(/bytes=/, "").split("-");
-        const start = parseInt(parts[0], 10);
-        const end = parts[1] ? parseInt(parts[1], 10) : totalSize - 1;
-        const chunkSize = end - start + 1;
-
-        const getCommand = new GetObjectCommand({
-          Bucket: ENV.railwayStorageBucket,
-          Key: key,
-          Range: `bytes=${start}-${end}`,
-        });
-        const getResponse = await s3.send(getCommand);
-
-        if (!getResponse.Body) {
-          return res.status(404).json({ error: "File not found in storage" });
-        }
-
-        res.writeHead(206, {
-          "Content-Range": `bytes ${start}-${end}/${totalSize}`,
-          "Accept-Ranges": "bytes",
-          "Content-Length": chunkSize,
-          "Content-Type": contentType,
-          "Cache-Control": "public, max-age=86400",
-        });
-
-        // Convert SDK stream to Node.js Readable and pipe
-        const bodyStream = getResponse.Body as any;
-        if (typeof bodyStream.transformToByteArray === "function") {
-          const bytes = await bodyStream.transformToByteArray();
-          res.end(Buffer.from(bytes));
-        } else if (typeof bodyStream.pipe === "function") {
-          bodyStream.pipe(res);
-        } else {
-          const bytes = await bodyStream.transformToByteArray();
-          res.end(Buffer.from(bytes));
-        }
-      } else {
-        // No Range header — return full file
-        const getCommand = new GetObjectCommand({
-          Bucket: ENV.railwayStorageBucket,
-          Key: key,
-        });
-        const getResponse = await s3.send(getCommand);
-
-        if (!getResponse.Body) {
-          return res.status(404).json({ error: "File not found in storage" });
-        }
-
-        res.writeHead(200, {
-          "Accept-Ranges": "bytes",
-          "Content-Length": totalSize,
-          "Content-Type": contentType,
-          "Cache-Control": "public, max-age=86400",
-        });
-
-        const bodyStream = getResponse.Body as any;
-        if (typeof bodyStream.transformToByteArray === "function") {
-          const bytes = await bodyStream.transformToByteArray();
-          res.end(Buffer.from(bytes));
-        } else if (typeof bodyStream.pipe === "function") {
-          bodyStream.pipe(res);
-        } else {
-          const bytes = await bodyStream.transformToByteArray();
-          res.end(Buffer.from(bytes));
-        }
-      }
+      const signedUrl = await storageGetSignedUrl(key, 3600); // 1 hour expiry
+      return res.redirect(302, signedUrl);
     } catch (err: any) {
-      console.error("[VideoProxy] Error fetching from S3:", key, err?.message);
-      if (err?.name === "NoSuchKey" || err?.$metadata?.httpStatusCode === 404) {
-        return res.status(404).json({ error: "Video not found" });
-      }
-      if (!res.headersSent) {
-        return res.status(500).json({ error: "Failed to fetch video" });
-      }
+      console.error("[VideoProxy] Error generating signed URL:", key, err?.message);
+      return res.status(404).json({ error: "Video not found" });
     }
   });
   // tRPC API

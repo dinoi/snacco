@@ -133,3 +133,9 @@
 - [x] Fix video proxy playback (videos show still but don't play — likely Range/streaming issue)
 - [x] Feed: Move UI overlay above the fold so it's visible without scrolling while video loops
 - [x] TutorialDetail: Overlay title/creator/desc/purchase button on video; chapters below on black background
+
+## v1.46
+
+- [x] Fix video proxy - switch to presigned URL redirect (streaming approach not working for video playback)
+- [x] Raise CTA buttons higher on Feed and TutorialDetail so they're above the fold
+- [x] Add IntersectionObserver to auto-play/pause videos as they scroll into view
