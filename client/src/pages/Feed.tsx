@@ -1,16 +1,37 @@
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
-import { Coins, ChevronRight } from "lucide-react";
+import { Coins, ChevronRight, Volume2, VolumeX } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VersionBadge } from "@/components/VersionBadge";
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
+
+// Global mute state shared across all feed cards
+let globalMuted = true;
+const muteListeners = new Set<(muted: boolean) => void>();
+function setGlobalMuted(muted: boolean) {
+  globalMuted = muted;
+  muteListeners.forEach((fn) => fn(muted));
+}
 
 function FeedCard({ tutorial, onNavigate, index }: { tutorial: any; onNavigate: (path: string) => void; index: number }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
-  const [isVisible, setIsVisible] = useState(index === 0); // First card starts visible
+  const [isVisible, setIsVisible] = useState(index === 0);
+  const [isMuted, setIsMuted] = useState(globalMuted);
+
+  // Subscribe to global mute state
+  useEffect(() => {
+    const handler = (muted: boolean) => {
+      setIsMuted(muted);
+      if (videoRef.current) {
+        videoRef.current.muted = muted;
+      }
+    };
+    muteListeners.add(handler);
+    return () => { muteListeners.delete(handler); };
+  }, []);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -34,6 +55,7 @@ function FeedCard({ tutorial, onNavigate, index }: { tutorial: any; onNavigate: 
       ([entry]) => {
         if (entry.isIntersecting) {
           setIsVisible(true);
+          video.muted = globalMuted;
           video.play().catch(() => {});
         } else {
           setIsVisible(false);
@@ -53,6 +75,11 @@ function FeedCard({ tutorial, onNavigate, index }: { tutorial: any; onNavigate: 
     };
   }, [isVisible]);
 
+  const toggleMute = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setGlobalMuted(!globalMuted);
+  }, []);
+
   return (
     <div
       ref={cardRef}
@@ -64,16 +91,28 @@ function FeedCard({ tutorial, onNavigate, index }: { tutorial: any; onNavigate: 
         ref={videoRef}
         src={tutorial.demoVideoUrl}
         className="absolute inset-0 w-full h-full object-cover"
-        muted
+        muted={isMuted}
         loop
         playsInline
         preload={isVisible ? "auto" : "metadata"}
-        // poster frame comes from preload="metadata" loading the first frame
         onError={e => {
           const vid = e.currentTarget as HTMLVideoElement;
           console.error('[Feed] Video load error:', vid.src, vid.error?.message);
         }}
       />
+
+      {/* Mute/unmute toggle — top right, below header */}
+      <button
+        onClick={toggleMute}
+        className="absolute top-16 right-4 z-30 w-10 h-10 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center border border-white/20 active:scale-[0.92] transition-transform"
+        aria-label={isMuted ? "Unmute" : "Mute"}
+      >
+        {isMuted ? (
+          <VolumeX size={18} className="text-white/80" />
+        ) : (
+          <Volume2 size={18} className="text-white" />
+        )}
+      </button>
 
       {/* Bottom gradient for info readability */}
       <div className="absolute bottom-0 left-0 right-0 h-72 bg-gradient-to-t from-black/95 via-black/60 to-transparent z-10" />

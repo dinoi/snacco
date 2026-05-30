@@ -1,21 +1,13 @@
 /**
  * Client-side video compression using Canvas + MediaRecorder.
- * 
- * Uses a FRAME-BY-FRAME SEEKING approach instead of real-time playback.
- * This is critical for mobile Safari which throttles/pauses offscreen video playback.
- * 
- * How it works:
- * 1. Seek to each frame position (at target fps intervals)
- * 2. Wait for the seek to complete
- * 3. Draw the frame to canvas
- * 4. Request a frame capture via captureStream
- * 5. After all frames, stop recording and return the blob
  *
- * Frame timing fix: We use captureStream(0) with manual requestFrame() calls.
- * The MediaRecorder timestamps each frame based on when requestFrame() is called.
- * We use a minimal delay (5ms) between frames — just enough for the recorder to
- * process each frame. The output video duration is determined by the total elapsed
- * real-time between start and stop, so we DON'T add artificial delays per frame.
+ * Uses REAL-TIME PLAYBACK to capture both video and audio together.
+ * The source video plays (muted on-screen, audio routed via Web Audio API),
+ * each frame is drawn to a canvas at the target resolution, and the canvas
+ * stream + audio destination stream are combined into a single MediaStream
+ * that MediaRecorder encodes at the target bitrate.
+ *
+ * Compression time ≈ video duration (real-time).
  */
 
 export interface CompressOptions {
@@ -43,7 +35,7 @@ export interface CompressResult {
 
 /**
  * Compress a video file using the browser's MediaRecorder API.
- * Uses frame-by-frame seeking for reliability on mobile Safari.
+ * Real-time playback approach — captures both video and audio.
  */
 export async function compressVideo(
   file: File,
@@ -62,18 +54,18 @@ export async function compressVideo(
 
   // Create a video element to decode the source
   const video = document.createElement("video");
-  video.muted = true;
+  video.muted = true; // Mute the element itself (we route audio via Web Audio API)
   video.playsInline = true;
   video.preload = "auto";
   const videoUrl = URL.createObjectURL(file);
   video.src = videoUrl;
 
-  // Wait for video to be fully loaded (not just metadata)
+  // Wait for video to be fully loaded
   await new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error("Timeout loading video")), 30000);
     video.oncanplaythrough = () => { clearTimeout(timeout); resolve(); };
     video.onloadedmetadata = () => {
-      // Fallback: if canplaythrough doesn't fire, proceed after metadata
+      // Fallback: if canplaythrough doesn't fire, proceed after metadata loads
       setTimeout(() => { clearTimeout(timeout); resolve(); }, 2000);
     };
     video.onerror = () => { clearTimeout(timeout); reject(new Error("Failed to load video")); };
@@ -105,20 +97,50 @@ export async function compressVideo(
   canvas.height = outHeight;
   const ctx = canvas.getContext("2d")!;
 
-  // Draw first frame as initial content
-  video.currentTime = 0;
-  await waitForSeek(video);
-  ctx.drawImage(video, 0, 0, outWidth, outHeight);
+  // Get canvas video stream at target fps
+  const canvasStream = canvas.captureStream(fps);
 
-  // Get canvas stream — use manual frame mode (0 fps = only updates on requestFrame)
-  const canvasStream = canvas.captureStream(0);
-  const videoTrack = canvasStream.getVideoTracks()[0] as any;
+  // Set up audio capture via Web Audio API
+  // This routes the video's audio through an AudioContext to a MediaStreamDestination
+  // so MediaRecorder can capture it without the video element making audible sound.
+  let audioCtx: AudioContext | null = null;
+  let audioSource: MediaElementAudioSourceNode | null = null;
+  let audioDest: MediaStreamAudioDestinationNode | null = null;
+  let hasAudio = false;
+
+  try {
+    audioCtx = new AudioContext();
+    // Resume AudioContext if suspended (required by autoplay policies on some browsers)
+    if (audioCtx.state === "suspended") {
+      await audioCtx.resume();
+    }
+    audioSource = audioCtx.createMediaElementSource(video);
+    audioDest = audioCtx.createMediaStreamDestination();
+    audioSource.connect(audioDest);
+    // Don't connect to audioCtx.destination — we don't want audible output during compression
+    hasAudio = true;
+    console.log("[Compressor] Audio capture set up successfully");
+  } catch (e) {
+    console.warn("[Compressor] Audio capture failed — output will have no sound:", e);
+    // Continue with video-only; the mute toggle on playback still works for uncompressed videos
+  }
+
+  // Combine canvas video stream + audio stream into one MediaStream
+  const combinedStream = new MediaStream();
+  for (const track of canvasStream.getVideoTracks()) {
+    combinedStream.addTrack(track);
+  }
+  if (hasAudio && audioDest) {
+    for (const track of audioDest.stream.getAudioTracks()) {
+      combinedStream.addTrack(track);
+    }
+  }
 
   // Determine best supported MIME type
   const mimeType = getPreferredMimeType();
 
   // Create MediaRecorder with target bitrate
-  const recorder = new MediaRecorder(canvasStream, {
+  const recorder = new MediaRecorder(combinedStream, {
     mimeType,
     videoBitsPerSecond: videoBitrate,
     audioBitsPerSecond: audioBitrate,
@@ -137,60 +159,63 @@ export async function compressVideo(
     };
   });
 
+  // Draw loop: continuously draw video frames to canvas at ~fps rate
+  let animationRunning = true;
+  const drawIntervalMs = 1000 / fps;
+
+  function drawLoop() {
+    if (!animationRunning) return;
+    ctx.drawImage(video, 0, 0, outWidth, outHeight);
+    setTimeout(drawLoop, drawIntervalMs);
+  }
+
   // Start recording
   recorder.start(500); // collect data every 500ms
 
-  // Frame-by-frame processing
-  // The key insight: MediaRecorder uses WALL CLOCK TIME to determine frame duration.
-  // With captureStream(0) + requestFrame(), each frame's duration in the output is
-  // the real-time gap between consecutive requestFrame() calls.
-  // 
-  // To get correct playback speed, we need each frame to last exactly (1/fps) seconds
-  // in the output. So we space requestFrame() calls by exactly (1000/fps) ms of real time.
-  // The seek+draw happens as fast as possible, then we wait for the remainder of the frame interval.
-  const frameInterval = 1 / fps;
-  const frameIntervalMs = 1000 / fps; // ~41.67ms for 24fps
-  const totalFrames = Math.ceil(duration * fps);
-  let processedFrames = 0;
-
-  for (let frameTime = 0; frameTime < duration; frameTime += frameInterval) {
-    const frameStartTime = performance.now();
-
-    // Seek to the frame position
-    video.currentTime = Math.min(frameTime, duration - 0.01);
-    await waitForSeek(video);
-
-    // Draw frame to canvas
-    ctx.drawImage(video, 0, 0, outWidth, outHeight);
-
-    // Request a frame capture from the canvas stream
-    if (videoTrack && typeof videoTrack.requestFrame === "function") {
-      videoTrack.requestFrame();
-    }
-
-    // Wait for the remainder of the frame interval to maintain correct playback speed.
-    // If seek+draw took longer than one frame interval, don't wait (just continue).
-    const elapsed = performance.now() - frameStartTime;
-    const remainingMs = frameIntervalMs - elapsed;
-    if (remainingMs > 1) {
-      await sleep(remainingMs);
-    }
-
-    // Report progress
-    processedFrames++;
-    if (onProgress) {
-      onProgress(Math.min(processedFrames / totalFrames, 0.99));
-    }
-  }
-
-  // Draw and capture the very last frame
-  video.currentTime = duration - 0.01;
-  await waitForSeek(video);
+  // Draw first frame
   ctx.drawImage(video, 0, 0, outWidth, outHeight);
-  if (videoTrack && typeof videoTrack.requestFrame === "function") {
-    videoTrack.requestFrame();
-  }
-  await sleep(frameIntervalMs); // One more frame interval for the last frame
+
+  // Start the draw loop
+  drawLoop();
+
+  // Unmute the video element so audio flows through the Web Audio API source node
+  // (MediaElementSource requires the element to not be muted for audio to flow)
+  video.muted = false;
+  video.volume = 0; // Keep silent on speakers — audio goes through AudioContext only
+
+  // Start playback
+  video.currentTime = 0;
+  await video.play();
+
+  // Progress reporting
+  const progressInterval = setInterval(() => {
+    if (onProgress && duration > 0) {
+      onProgress(Math.min(video.currentTime / duration, 0.99));
+    }
+  }, 250);
+
+  // Wait for video to finish playing
+  await new Promise<void>((resolve) => {
+    video.onended = () => resolve();
+    video.onpause = () => {
+      // Sometimes 'ended' doesn't fire; check if we're near the end
+      if (video.currentTime >= duration - 0.1) {
+        resolve();
+      }
+    };
+    // Safety timeout: if video doesn't end naturally, stop after duration + 2s
+    setTimeout(() => resolve(), (duration + 2) * 1000);
+  });
+
+  // Stop everything
+  animationRunning = false;
+  clearInterval(progressInterval);
+
+  // Draw one last frame
+  ctx.drawImage(video, 0, 0, outWidth, outHeight);
+
+  // Small delay to ensure last frame is captured
+  await sleep(100);
 
   // Stop recording and wait for blob
   recorder.stop();
@@ -200,6 +225,9 @@ export async function compressVideo(
   onProgress?.(1);
 
   // Cleanup
+  if (audioCtx) {
+    try { audioCtx.close(); } catch {}
+  }
   URL.revokeObjectURL(videoUrl);
   video.remove();
   canvas.remove();
@@ -213,28 +241,6 @@ export async function compressVideo(
     compressionRatio: originalSize / compressedSize,
     duration,
   };
-}
-
-/**
- * Wait for a video seek operation to complete
- */
-function waitForSeek(video: HTMLVideoElement): Promise<void> {
-  return new Promise((resolve) => {
-    if (!video.seeking) {
-      resolve();
-      return;
-    }
-    const onSeeked = () => {
-      video.removeEventListener("seeked", onSeeked);
-      resolve();
-    };
-    video.addEventListener("seeked", onSeeked);
-    // Safety timeout: if seek doesn't complete in 2s, continue anyway
-    setTimeout(() => {
-      video.removeEventListener("seeked", onSeeked);
-      resolve();
-    }, 2000);
-  });
 }
 
 /**

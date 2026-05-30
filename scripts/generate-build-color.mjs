@@ -11,7 +11,7 @@ import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const colors = ['#FF0000', '#FFFF00', '#00AA00', '#0000FF']; // Red, Yellow, Green, Blue
+const colors = ['#FF6B6B', '#FFDA6B', '#6BFFB8', '#6BB8FF']; // Light Red, Light Yellow, Light Mint, Light Blue
 const randomColor = colors[Math.floor(Math.random() * colors.length)];
 const buildTimestamp = new Date().toISOString();
 
@@ -32,10 +32,10 @@ const buildInfo = {
   color: randomColor,
   timestamp: buildTimestamp,
   colorName: {
-    '#FF0000': 'red',
-    '#FFFF00': 'yellow',
-    '#00AA00': 'green',
-    '#0000FF': 'blue'
+    '#FF6B6B': 'coral',
+    '#FFDA6B': 'gold',
+    '#6BFFB8': 'mint',
+    '#6BB8FF': 'sky'
   }[randomColor]
 };
 

@@ -164,3 +164,11 @@
 - [x] Replace presigned URL redirect with proper streaming proxy (pipe S3 stream with Range support, 24h cache headers)
 - [x] Use stable /api/video/{key} URLs so browser can cache across pages (removed presigned URL cache)
 - [ ] Fix demo thumbnail being overwritten by tutorial video thumbnail (DEFERRED)
+
+## v1.52 - Next Deploy Bundle (pending)
+
+- [x] Lighter version badge colors (coral, gold, mint, sky instead of dark red/yellow/green/blue)
+- [x] Fix demo thumbnail being overwritten by tutorial video thumbnail in CreatorUpload Step 3
+- [x] Fix video compression to preserve audio track (rewrote to real-time playback with Web Audio API routing)
+- [x] Add mute/unmute toggle button to Feed video cards
+- [x] Add mute/unmute toggle button to TutorialDetail video player

@@ -283,12 +283,18 @@ export default function CreatorUpload() {
       return;
     }
 
-    setThumbnailDataUrl(null);
     setUploadingType(type);
     setUploadError(null);
 
-    // Generate canvas thumbnail in parallel (iOS-safe)
-    generateThumbnail(file).then((dataUrl) => setThumbnailDataUrl(dataUrl));
+    // Generate canvas thumbnail only for demo videos (not tutorial)
+    // This prevents the tutorial thumbnail from overwriting the demo thumbnail
+    if (type === "demo") {
+      setThumbnailDataUrl(null);
+      generateThumbnail(file).then((dataUrl) => {
+        setThumbnailDataUrl(dataUrl);
+        setDemoThumbnailUrl(dataUrl);
+      });
+    }
 
     // ── Compress video if it's large (>5MB) and browser supports it ──
     let fileToUpload: File = file;
@@ -330,7 +336,7 @@ export default function CreatorUpload() {
       };
       if (type === "demo") {
         setDemoVideo(uploaded);
-        setDemoThumbnailUrl(thumbnailDataUrl);
+        // demoThumbnailUrl is already set by generateThumbnail callback above
         setTimeout(() => setStep("tutorial"), 400);
       } else {
         setTutorialVideo(uploaded);
