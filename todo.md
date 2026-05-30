@@ -163,7 +163,7 @@
 - [x] Fix compression half-speed playback (frame timing mismatch in MediaRecorder)
 - [x] Replace presigned URL redirect with proper streaming proxy (pipe S3 stream with Range support, 24h cache headers)
 - [x] Use stable /api/video/{key} URLs so browser can cache across pages (removed presigned URL cache)
-- [ ] Fix demo thumbnail being overwritten by tutorial video thumbnail (DEFERRED)
+- [x] Fix demo thumbnail being overwritten by tutorial video thumbnail (fixed in v1.52)
 
 ## v1.52 - Next Deploy Bundle (pending)
 
@@ -172,3 +172,8 @@
 - [x] Fix video compression to preserve audio track (rewrote to real-time playback with Web Audio API routing)
 - [x] Add mute/unmute toggle button to Feed video cards
 - [x] Add mute/unmute toggle button to TutorialDetail video player
+
+## v1.53 - Feed UX Improvements
+
+- [x] Fix slow video playback start in Feed (metadata cache eliminates HeadObject round trip, skip HeadObject for non-Range)
+- [x] Add TikTok-style vertical swipe navigation with 50% threshold snap, rubber-band edges, slide indicators

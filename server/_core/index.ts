@@ -12,7 +12,7 @@ import { serveStatic, setupVite } from "./vite";
 import { registerUploadRoute } from "../uploadRoute-railway";
 import { ENV } from "./env";
 import { getLocalFilePath, getS3Client } from "../railway-storage";
-import { GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand, HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { Readable } from "stream";
 import fs from "fs";
 
@@ -66,7 +66,45 @@ async function startServer() {
     res.sendFile(filePath);
   });
 
-  // Video proxy: stream from S3 with Range support and browser caching
+  // ── Video proxy: stream from S3 with Range support and browser caching ──
+  // In-memory metadata cache: avoids HeadObject round trip on every range request.
+  // The browser makes 3-5 range requests per video (moov atom probe, then data chunks).
+  // Without cache: each request = HeadObject (200ms) + GetObject (200ms) = 400ms × 5 = 2s minimum.
+  // With cache: first request = HeadObject + GetObject, subsequent = GetObject only.
+  const videoMetaCache = new Map<string, { totalSize: number; contentType: string; cachedAt: number }>();
+  const META_CACHE_TTL = 3600_000; // 1 hour
+
+  async function getVideoMeta(client: S3Client, bucket: string, key: string) {
+    const cached = videoMetaCache.get(key);
+    if (cached && Date.now() - cached.cachedAt < META_CACHE_TTL) {
+      return { totalSize: cached.totalSize, contentType: cached.contentType };
+    }
+    const headResp = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+    const meta = {
+      totalSize: headResp.ContentLength ?? 0,
+      contentType: headResp.ContentType ?? "video/mp4",
+      cachedAt: Date.now(),
+    };
+    videoMetaCache.set(key, meta);
+    // Cap cache size at 200 entries
+    if (videoMetaCache.size > 200) {
+      const oldest = videoMetaCache.keys().next().value;
+      if (oldest) videoMetaCache.delete(oldest);
+    }
+    return { totalSize: meta.totalSize, contentType: meta.contentType };
+  }
+
+  function pipeS3Body(body: any, res: Response) {
+    if (body && typeof body.pipe === "function") {
+      (body as Readable).pipe(res);
+    } else if (body) {
+      const webStream = body.transformToWebStream();
+      Readable.fromWeb(webStream as any).pipe(res);
+    } else {
+      res.status(500).json({ error: "Empty S3 response" });
+    }
+  }
+
   app.get("/api/video/:key(*)", async (req: Request, res: Response) => {
     const key = req.params.key;
     if (!key) return res.status(400).json({ error: "Missing key" });
@@ -80,19 +118,33 @@ async function startServer() {
     try {
       const client = getS3Client();
       const bucket = ENV.railwayStorageBucket;
+      const rangeHeader = req.headers.range;
 
-      // First, get the object metadata (size, content-type)
-      const headCmd = new HeadObjectCommand({ Bucket: bucket, Key: key });
-      const headResp = await client.send(headCmd);
-      const totalSize = headResp.ContentLength ?? 0;
-      const contentType = headResp.ContentType ?? "video/mp4";
+      // For non-Range requests, skip HeadObject entirely — get size from GetObject response
+      if (!rangeHeader) {
+        const getResp = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+        const totalSize = getResp.ContentLength ?? 0;
+        const contentType = getResp.ContentType ?? "video/mp4";
 
-      // Cache for 24 hours — stable URL means browser can reuse across pages
+        // Cache metadata for future range requests
+        videoMetaCache.set(key, { totalSize, contentType, cachedAt: Date.now() });
+
+        res.status(200);
+        res.setHeader("Cache-Control", "public, max-age=86400, immutable");
+        res.setHeader("Accept-Ranges", "bytes");
+        res.setHeader("Content-Type", contentType);
+        res.setHeader("Content-Length", totalSize);
+        pipeS3Body(getResp.Body, res);
+        return;
+      }
+
+      // Range request — need metadata for validation
+      const { totalSize, contentType } = await getVideoMeta(client, bucket, key);
+
       res.setHeader("Cache-Control", "public, max-age=86400, immutable");
       res.setHeader("Accept-Ranges", "bytes");
       res.setHeader("Content-Type", contentType);
 
-      // Handle zero-size objects
       if (totalSize === 0) {
         res.status(200);
         res.setHeader("Content-Length", 0);
@@ -100,71 +152,36 @@ async function startServer() {
         return;
       }
 
-      const rangeHeader = req.headers.range;
-
-      if (rangeHeader) {
-        // Parse Range header: "bytes=start-end"
-        const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
-        if (!match) {
-          res.status(416);
-          res.setHeader("Content-Range", `bytes */${totalSize}`);
-          res.json({ error: "Invalid range" });
-          return;
-        }
-        const start = parseInt(match[1], 10);
-        // Clamp end to totalSize - 1; default to totalSize - 1 if not specified
-        const rawEnd = match[2] ? parseInt(match[2], 10) : totalSize - 1;
-        const end = Math.min(rawEnd, totalSize - 1);
-
-        // Validate: start must be within bounds and not exceed end
-        if (start >= totalSize || start > end) {
-          res.status(416);
-          res.setHeader("Content-Range", `bytes */${totalSize}`);
-          res.json({ error: "Range not satisfiable" });
-          return;
-        }
-
-        const chunkSize = end - start + 1;
-
-        // Fetch the range from S3
-        const getCmd = new GetObjectCommand({
-          Bucket: bucket,
-          Key: key,
-          Range: `bytes=${start}-${end}`,
-        });
-        const getResp = await client.send(getCmd);
-
-        res.status(206);
-        res.setHeader("Content-Range", `bytes ${start}-${end}/${totalSize}`);
-        res.setHeader("Content-Length", chunkSize);
-
-        // Pipe the S3 stream directly to the response (no buffering)
-        if (getResp.Body && typeof (getResp.Body as any).pipe === "function") {
-          (getResp.Body as Readable).pipe(res);
-        } else if (getResp.Body) {
-          // Fallback: convert to web stream then to node stream
-          const webStream = (getResp.Body as any).transformToWebStream();
-          Readable.fromWeb(webStream as any).pipe(res);
-        } else {
-          res.status(500).json({ error: "Empty S3 response" });
-        }
-      } else {
-        // Full request (no Range header)
-        const getCmd = new GetObjectCommand({ Bucket: bucket, Key: key });
-        const getResp = await client.send(getCmd);
-
-        res.status(200);
-        res.setHeader("Content-Length", totalSize);
-
-        if (getResp.Body && typeof (getResp.Body as any).pipe === "function") {
-          (getResp.Body as Readable).pipe(res);
-        } else if (getResp.Body) {
-          const webStream = (getResp.Body as any).transformToWebStream();
-          Readable.fromWeb(webStream as any).pipe(res);
-        } else {
-          res.status(500).json({ error: "Empty S3 response" });
-        }
+      const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+      if (!match) {
+        res.status(416);
+        res.setHeader("Content-Range", `bytes */${totalSize}`);
+        res.json({ error: "Invalid range" });
+        return;
       }
+
+      const start = parseInt(match[1], 10);
+      const rawEnd = match[2] ? parseInt(match[2], 10) : totalSize - 1;
+      const end = Math.min(rawEnd, totalSize - 1);
+
+      if (start >= totalSize || start > end) {
+        res.status(416);
+        res.setHeader("Content-Range", `bytes */${totalSize}`);
+        res.json({ error: "Range not satisfiable" });
+        return;
+      }
+
+      const chunkSize = end - start + 1;
+      const getResp = await client.send(new GetObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Range: `bytes=${start}-${end}`,
+      }));
+
+      res.status(206);
+      res.setHeader("Content-Range", `bytes ${start}-${end}/${totalSize}`);
+      res.setHeader("Content-Length", chunkSize);
+      pipeS3Body(getResp.Body, res);
     } catch (err: any) {
       console.error("[VideoProxy] Error streaming:", key, err?.message);
       if (!res.headersSent) {
