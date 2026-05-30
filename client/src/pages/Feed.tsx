@@ -55,8 +55,8 @@ function FeedCard({ tutorial, onNavigate }: { tutorial: any; onNavigate: (path: 
       {/* Bottom gradient for info readability */}
       <div className="absolute bottom-0 left-0 right-0 h-72 bg-gradient-to-t from-black/95 via-black/60 to-transparent z-10" />
 
-      {/* Bottom info overlay — positioned at ~60% from top to be above fold */}
-      <div className="absolute left-0 right-0 z-20 p-4" style={{ bottom: '25%' }}>
+      {/* Bottom info overlay — positioned just above the bottom tab bar */}
+      <div className="absolute left-0 right-0 z-20 px-4 pb-2" style={{ bottom: '5rem' }}>
         <div className="flex items-start justify-between gap-2 mb-3">
           <div className="flex-1 min-w-0">
             <h3 className="font-bold text-white text-lg leading-tight truncate">{tutorial.title}</h3>
