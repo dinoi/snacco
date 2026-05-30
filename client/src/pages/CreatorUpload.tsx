@@ -390,8 +390,33 @@ export default function CreatorUpload() {
   };
 
   // ── Publish ────────────────────────────────────────────────────────
-  const handlePublish = () => {
+  const uploadThumbnailMutation = trpc.tutorials.uploadThumbnail.useMutation();
+
+  const handlePublish = async () => {
     if (!demoVideo || !tutorialVideo) return;
+
+    // Upload thumbnail — required for good UX (shows in Library, Profile, Feed skeleton)
+    let thumbnailUrl: string | undefined;
+    let thumbnailKey: string | undefined;
+    if (demoThumbnailUrl) {
+      try {
+        const thumbResult = await uploadThumbnailMutation.mutateAsync({ imageData: demoThumbnailUrl });
+        thumbnailUrl = thumbResult.url;
+        thumbnailKey = thumbResult.key;
+      } catch (err: any) {
+        toast.error("Thumbnail upload failed. Retrying...");
+        // Retry once
+        try {
+          const thumbResult = await uploadThumbnailMutation.mutateAsync({ imageData: demoThumbnailUrl });
+          thumbnailUrl = thumbResult.url;
+          thumbnailKey = thumbResult.key;
+        } catch (retryErr) {
+          toast.error("Thumbnail upload failed. Publishing without thumbnail.");
+          console.warn("[Publish] Thumbnail upload failed after retry:", retryErr);
+        }
+      }
+    }
+
     publishMutation.mutate({
       title: title.trim(),
       description: description.trim(),
@@ -401,6 +426,8 @@ export default function CreatorUpload() {
       demoVideoKey: demoVideo.key,
       tutorialVideoUrl: tutorialVideo.url,
       tutorialVideoKey: tutorialVideo.key,
+      thumbnailUrl,
+      thumbnailKey,
       chapters: chapters.map((c, idx) => ({ label: c.label, timestampSeconds: Math.round(c.time), sortOrder: idx })),
     });
   };

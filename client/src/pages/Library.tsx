@@ -67,13 +67,22 @@ export default function Library() {
           >
             {/* Thumbnail */}
             <div className="w-20 h-28 rounded-xl bg-black overflow-hidden shrink-0 relative">
-              <video
-                src={tutorial.demoVideoUrl}
-                className="w-full h-full object-cover"
-                muted
-                playsInline
-                preload="auto"
-              />
+              {tutorial.thumbnailUrl ? (
+                <img
+                  src={tutorial.thumbnailUrl}
+                  className="w-full h-full object-cover"
+                  alt={tutorial.title}
+                  loading="lazy"
+                />
+              ) : (
+                <video
+                  src={tutorial.demoVideoUrl}
+                  className="w-full h-full object-cover"
+                  muted
+                  playsInline
+                  preload="metadata"
+                />
+              )}
               <div className="absolute inset-0 flex items-center justify-center bg-black/30">
                 <Play size={20} className="text-white fill-white" />
               </div>

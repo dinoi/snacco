@@ -131,6 +131,7 @@ export default function TutorialDetail() {
           ref={videoRef}
           src={tutorial.demoVideoUrl}
           className="absolute inset-0 w-full h-full object-cover"
+          poster={(tutorial as any).thumbnailUrl || undefined}
           muted={isMuted}
           loop
           playsInline

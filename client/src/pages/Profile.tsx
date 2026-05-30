@@ -138,7 +138,15 @@ export default function Profile() {
               ))
             ) : myTutorials && myTutorials.length > 0 ? (
               myTutorials.map((tutorial) => (
-                <div key={tutorial.id} className="p-3 bg-card rounded-xl border border-border flex items-center justify-between">
+                <div key={tutorial.id} className="p-3 bg-card rounded-xl border border-border flex items-center gap-3">
+                  {/* Thumbnail */}
+                  <div className="w-14 h-20 rounded-lg bg-black overflow-hidden shrink-0">
+                    {tutorial.thumbnailUrl ? (
+                      <img src={tutorial.thumbnailUrl} className="w-full h-full object-cover" alt={tutorial.title} loading="lazy" />
+                    ) : (
+                      <video src={tutorial.demoVideoUrl} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+                    )}
+                  </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-foreground text-sm truncate">{tutorial.title}</p>
                     <p className="text-muted-foreground text-xs">{tutorial.category} · {tutorial.tokenPrice} tokens</p>

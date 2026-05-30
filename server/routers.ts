@@ -33,17 +33,22 @@ const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
 // Return stable /api/video/{key} proxy URLs so the browser can cache them
 // across feed ↔ detail page navigation (same URL = same cache entry).
 
-function resolveVideoUrl<T extends { demoVideoUrl: string; demoVideoKey: string; tutorialVideoUrl: string; tutorialVideoKey: string }>(tutorial: T): T {
+function resolveVideoUrl<T extends { demoVideoUrl: string; demoVideoKey: string; tutorialVideoUrl: string; tutorialVideoKey: string; thumbnailUrl?: string | null; thumbnailKey?: string | null }>(tutorial: T): T {
   const demoUrl = tutorial.demoVideoKey
     ? `/api/video/${tutorial.demoVideoKey}#t=0.001`
     : tutorial.demoVideoUrl;
   const tutorialUrl = tutorial.tutorialVideoKey
     ? `/api/video/${tutorial.tutorialVideoKey}#t=0.001`
     : tutorial.tutorialVideoUrl;
+  // Resolve thumbnail: use storage proxy URL if key exists
+  const thumbUrl = tutorial.thumbnailKey
+    ? `/manus-storage/${tutorial.thumbnailKey}`
+    : tutorial.thumbnailUrl ?? null;
   return {
     ...tutorial,
     demoVideoUrl: demoUrl,
     tutorialVideoUrl: tutorialUrl,
+    thumbnailUrl: thumbUrl,
   };
 }
 
@@ -285,6 +290,23 @@ export const appRouter = router({
         return { key, s3Url, storageUrl: `/manus-storage/${key}` };
       }),
 
+    // Upload thumbnail image (base64 data URL from canvas)
+    uploadThumbnail: protectedProcedure
+      .input(z.object({
+        imageData: z.string(), // base64 data URL
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Parse data URL: "data:image/png;base64,iVBOR..."
+        const match = input.imageData.match(/^data:([^;]+);base64,(.+)$/);
+        if (!match) throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid image data" });
+        const mimeType = match[1];
+        const buffer = Buffer.from(match[2], "base64");
+        const ext = mimeType.includes("png") ? "png" : "jpg";
+        const key = `thumbnails/${ctx.user.id}/${Date.now()}.${ext}`;
+        const result = await storage.storagePut(key, buffer, mimeType);
+        return { key: result.key, url: result.url };
+      }),
+
     // Creator: publish a tutorial with chapters
     publish: protectedProcedure
       .input(z.object({
@@ -296,6 +318,8 @@ export const appRouter = router({
         demoVideoKey: z.string(),
         tutorialVideoUrl: z.string(),
         tutorialVideoKey: z.string(),
+        thumbnailUrl: z.string().optional(),
+        thumbnailKey: z.string().optional(),
         chapters: z.array(z.object({
           label: z.string().min(1),
           timestampSeconds: z.number().int().min(0),
@@ -329,6 +353,8 @@ export const appRouter = router({
         demoVideoKey: z.string(),
         tutorialVideoUrl: z.string(),
         tutorialVideoKey: z.string(),
+        thumbnailUrl: z.string().optional(),
+        thumbnailKey: z.string().optional(),
         chapters: z.array(z.object({
           label: z.string().min(1),
           timestampSeconds: z.number().int().min(0),

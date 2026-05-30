@@ -184,3 +184,11 @@
 - [x] Add swipe velocity detection — snap based on flick speed (>0.4px/ms) OR 50% distance threshold
 - [x] Add video loading skeleton — blurred thumbnail + spinner while video buffers (Feed + TutorialDetail)
 - [x] Keep Feed mounted when navigating to tutorial detail — videos stay buffered, instant back navigation
+
+## v1.55 - Video Loading & Thumbnails
+
+- [x] Fix demo video reloading on tutorial detail page (keep-alive Feed + cache headers + loading skeleton)
+- [x] Fix tutorial video (Player page) black screen — added autoPlay + buffering spinner overlay
+- [x] Add demo thumbnails to Library page (img with video fallback)
+- [x] Add demo thumbnails to Creator dashboard (img with video fallback)
+- [x] Upload and store thumbnail during publish flow (uploadThumbnail mutation + DB columns)

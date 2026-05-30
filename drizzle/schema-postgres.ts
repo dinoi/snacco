@@ -47,6 +47,8 @@ export const tutorials = pgTable("tutorials", {
   demoVideoKey: text("demo_video_key").notNull(),
   tutorialVideoUrl: text("tutorial_video_url").notNull(),
   tutorialVideoKey: text("tutorial_video_key").notNull(),
+  thumbnailUrl: text("thumbnail_url"),
+  thumbnailKey: text("thumbnail_key"),
   isPublished: boolean("is_published").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

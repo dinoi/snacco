@@ -27,6 +27,7 @@ export default function Player() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const progressBarRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [speed, setSpeed] = useState<Speed>(1);
@@ -165,16 +166,31 @@ export default function Player() {
           ref={videoRef}
           src={tutorial?.tutorialVideoUrl}
           className="w-full h-full object-contain"
+          poster={(tutorial as any)?.thumbnailUrl || undefined}
           playsInline
           preload="auto"
+          autoPlay
           onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
           onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+          onCanPlay={() => setIsBuffering(false)}
+          onWaiting={() => setIsBuffering(true)}
+          onPlaying={() => { setIsBuffering(false); setIsPlaying(true); }}
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
           onEnded={() => setIsPlaying(false)}
           onClick={togglePlay}
           onError={(e) => console.error('[Player] Video error:', e)}
         />
+
+        {/* Loading spinner overlay */}
+        {isBuffering && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-10">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-12 h-12 border-3 border-white/30 border-t-primary rounded-full animate-spin" />
+              <p className="text-white/70 text-sm font-medium">Loading tutorial...</p>
+            </div>
+          </div>
+        )}
 
         {/* Controls overlay */}
         <div
