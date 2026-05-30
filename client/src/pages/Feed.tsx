@@ -90,7 +90,7 @@ export default function Feed() {
     <div className="min-h-dvh bg-black snap-y snap-mandatory overflow-y-auto">
       {/* Header — fixed overlay */}
       <div className="fixed top-0 left-0 right-0 z-50 px-4 py-3 safe-top flex items-center justify-between">
-        <div className="absolute inset-0 bg-gradient-to-b from-black/60 to-transparent pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/80 to-transparent pointer-events-none" />
         <h1 className="text-xl font-black text-white tracking-tight relative z-10">snacco</h1>
         <div className="flex items-center gap-3 relative z-10">
           <VersionBadge />
