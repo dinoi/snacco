@@ -70,9 +70,10 @@ export function registerUploadRoute(app: Express) {
         const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
         const key = `videos/${user.id}/${type}/${Date.now()}_${safeName}`;
 
-        const { key: storedKey, url } = await storage.storagePutStream(key, tmpPath, file.mimetype || "video/mp4");
+        const { key: storedKey } = await storage.storagePutStream(key, tmpPath, file.mimetype || "video/mp4");
 
-        return res.json({ key: storedKey, url });
+        // Return proxy URL (Railway S3 buckets are private, no public URLs)
+        return res.json({ key: storedKey, url: `/api/video/${storedKey}` });
       } catch (err: any) {
         console.error("[Upload] Error:", err);
         return res.status(500).json({ error: err?.message ?? "Upload failed" });

@@ -120,3 +120,10 @@
 
 - [x] Fix mobile demo thumbnail display in Step 3 — replaced `<video>` element (shows black on mobile Safari when paused) with `<img>` using thumbnail data URL
 - [x] Add separate `demoThumbnailUrl` state so demo thumbnail persists when tutorial upload starts (previously `setThumbnailDataUrl(null)` at start of tutorial upload would clear the demo thumbnail)
+
+## Bug Fixes v1.44
+
+- [x] Fix feed/library/detail showing black videos — Railway S3 buckets are private, stored public URLs don't resolve
+- [x] Add video proxy endpoint `/api/video/:key(*)` that streams video from Railway S3 to client
+- [x] Modify backend procedures (feed, get, library, myTutorials, adminList) to rewrite video URLs to proxy URLs
+- [x] Ensure CreatorEdit doesn't save proxy URLs back to DB (use separate resolved fields or keep keys intact)

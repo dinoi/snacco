@@ -11,7 +11,8 @@ import { createContext } from "./context-github";
 import { serveStatic, setupVite } from "./vite";
 import { registerUploadRoute } from "../uploadRoute-railway";
 import { ENV } from "./env";
-import { getLocalFilePath } from "../railway-storage";
+import { getLocalFilePath, getS3Client } from "../railway-storage";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
 import fs from "fs";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -62,6 +63,75 @@ async function startServer() {
       return res.status(404).json({ error: "File not found" });
     }
     res.sendFile(filePath);
+  });
+
+  // Video proxy: stream videos from Railway S3 private bucket
+  app.get("/api/video/:key(*)", async (req: Request, res: Response) => {
+    const key = req.params.key;
+    if (!key) return res.status(400).json({ error: "Missing key" });
+
+    // Check local storage first
+    const localPath = getLocalFilePath(key);
+    if (localPath) {
+      return res.sendFile(localPath);
+    }
+
+    // Stream from Railway S3
+    if (!ENV.railwayStorageEndpoint || !ENV.railwayAccessKeyId || !ENV.railwaySecretAccessKey) {
+      return res.status(500).json({ error: "Storage not configured" });
+    }
+
+    try {
+      const s3 = getS3Client();
+
+      // Handle Range requests for video seeking
+      const rangeHeader = req.headers.range;
+      const getParams: any = {
+        Bucket: ENV.railwayStorageBucket,
+        Key: key,
+      };
+      if (rangeHeader) {
+        getParams.Range = rangeHeader;
+      }
+
+      const command = new GetObjectCommand(getParams);
+      const response = await s3.send(command);
+
+      if (!response.Body) {
+        return res.status(404).json({ error: "File not found in storage" });
+      }
+
+      // Set response headers
+      const contentType = response.ContentType || "video/mp4";
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Accept-Ranges", "bytes");
+      res.setHeader("Cache-Control", "public, max-age=86400"); // Cache 24h
+
+      if (response.ContentLength !== undefined) {
+        res.setHeader("Content-Length", response.ContentLength);
+      }
+
+      if (rangeHeader && response.ContentRange) {
+        res.setHeader("Content-Range", response.ContentRange);
+        res.status(206);
+      } else {
+        res.status(200);
+      }
+
+      // Stream the body
+      const stream = response.Body as NodeJS.ReadableStream;
+      stream.pipe(res);
+      stream.on("error", (err) => {
+        console.error("[VideoProxy] Stream error:", err);
+        if (!res.headersSent) res.status(500).json({ error: "Stream failed" });
+      });
+    } catch (err: any) {
+      console.error("[VideoProxy] Error fetching from S3:", key, err?.message);
+      if (err?.name === "NoSuchKey" || err?.$metadata?.httpStatusCode === 404) {
+        return res.status(404).json({ error: "Video not found" });
+      }
+      return res.status(500).json({ error: "Failed to fetch video" });
+    }
   });
   // tRPC API
   app.use(

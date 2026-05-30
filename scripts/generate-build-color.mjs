@@ -16,7 +16,7 @@ const randomColor = colors[Math.floor(Math.random() * colors.length)];
 const buildTimestamp = new Date().toISOString();
 
 // Extract version from git tag or commit message
-let version = 'v1.43'; // Fix mobile demo thumbnail display in Step 3
+let version = 'v1.44'; // Fix feed black videos - proxy Railway S3 private bucket
 try {
   const lastCommitMessage = execSync('git log -1 --pretty=%B', { cwd: path.join(__dirname, '..'), encoding: 'utf-8' }).trim();
   const versionMatch = lastCommitMessage.match(/v(\d+\.\d+(?:\.\d+)?)/);

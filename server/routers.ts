@@ -28,6 +28,17 @@ const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   return next({ ctx });
 });
 
+// ─── Video URL resolver ──────────────────────────────────────────────────
+// Railway S3 buckets are private — no public URLs exist.
+// We serve videos through our own proxy endpoint: /api/video/{key}
+function resolveVideoUrl<T extends { demoVideoUrl: string; demoVideoKey: string; tutorialVideoUrl: string; tutorialVideoKey: string }>(tutorial: T): T {
+  return {
+    ...tutorial,
+    demoVideoUrl: tutorial.demoVideoKey ? `/api/video/${tutorial.demoVideoKey}` : tutorial.demoVideoUrl,
+    tutorialVideoUrl: tutorial.tutorialVideoKey ? `/api/video/${tutorial.tutorialVideoKey}` : tutorial.tutorialVideoUrl,
+  };
+}
+
 export const appRouter = router({
   system: systemRouter,
 
@@ -90,7 +101,8 @@ export const appRouter = router({
   tutorials: router({
     // Public feed
     feed: publicProcedure.query(async () => {
-      return db.getPublishedTutorials();
+      const tutorials = await db.getPublishedTutorials();
+      return tutorials.map(resolveVideoUrl);
     }),
 
     // Single tutorial detail
@@ -99,7 +111,7 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const tutorial = await db.getTutorialById(input.id);
         if (!tutorial) throw new TRPCError({ code: "NOT_FOUND" });
-        return tutorial;
+        return resolveVideoUrl(tutorial);
       }),
 
     // Chapters for a tutorial
@@ -140,12 +152,14 @@ export const appRouter = router({
 
     // Library: all unlocked tutorials for current user
     library: protectedProcedure.query(async ({ ctx }) => {
-      return db.getUnlockedTutorials(ctx.user.id);
+      const tutorials = await db.getUnlockedTutorials(ctx.user.id);
+      return tutorials.map(resolveVideoUrl);
     }),
 
     // Creator: get my tutorials
     myTutorials: protectedProcedure.query(async ({ ctx }) => {
-      return db.getTutorialsByCreator(ctx.user.id);
+      const tutorials = await db.getTutorialsByCreator(ctx.user.id);
+      return tutorials.map(resolveVideoUrl);
     }),
 
     // ── Chunked upload: receive one chunk at a time ──────────────────
@@ -305,6 +319,13 @@ export const appRouter = router({
         if (tutorial.creatorId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "You can only edit your own tutorials" });
 
         const { chapters: chapterData, ...tutorialData } = input;
+        // Normalize video URLs: always store key-based reference, never proxy URLs
+        if (tutorialData.demoVideoKey) {
+          tutorialData.demoVideoUrl = tutorialData.demoVideoKey;
+        }
+        if (tutorialData.tutorialVideoKey) {
+          tutorialData.tutorialVideoUrl = tutorialData.tutorialVideoKey;
+        }
         await db.updateTutorial(input.id, tutorialData);
 
         // Delete old chapters and create new ones
@@ -339,7 +360,8 @@ export const appRouter = router({
 
     // Admin: list all tutorials
     adminList: adminProcedure.query(async () => {
-      return db.getAllTutorials();
+      const tutorials = await db.getAllTutorials();
+      return tutorials.map(resolveVideoUrl);
     }),
 
     // Admin: toggle publish status
