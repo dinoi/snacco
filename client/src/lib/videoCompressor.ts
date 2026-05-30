@@ -1,7 +1,15 @@
 /**
  * Client-side video compression using Canvas + MediaRecorder.
- * Re-encodes video at a target bitrate (~4 Mbps) to dramatically reduce file size
- * while maintaining acceptable visual quality for mobile streaming.
+ * 
+ * Uses a FRAME-BY-FRAME SEEKING approach instead of real-time playback.
+ * This is critical for mobile Safari which throttles/pauses offscreen video playback.
+ * 
+ * How it works:
+ * 1. Seek to each frame position (at 30fps intervals)
+ * 2. Wait for the seek to complete
+ * 3. Draw the frame to canvas
+ * 4. The MediaRecorder captures from the canvas stream
+ * 5. After all frames, stop recording and return the blob
  *
  * Typical results:
  * - 19MB phone recording → ~2-3MB compressed
@@ -17,6 +25,8 @@ export interface CompressOptions {
   maxWidth?: number;
   /** Max height (maintains aspect ratio). Default: 1920 */
   maxHeight?: number;
+  /** Output framerate. Default: 30 */
+  fps?: number;
   /** Progress callback (0-1) */
   onProgress?: (progress: number) => void;
 }
@@ -31,7 +41,7 @@ export interface CompressResult {
 
 /**
  * Compress a video file using the browser's MediaRecorder API.
- * Works by playing the video through a canvas and re-recording it.
+ * Uses frame-by-frame seeking for reliability on mobile Safari.
  */
 export async function compressVideo(
   file: File,
@@ -42,6 +52,7 @@ export async function compressVideo(
     audioBitrate = 128_000,
     maxWidth = 1080,
     maxHeight = 1920,
+    fps = 24,
     onProgress,
   } = options;
 
@@ -55,12 +66,16 @@ export async function compressVideo(
   const videoUrl = URL.createObjectURL(file);
   video.src = videoUrl;
 
-  // Wait for metadata to load
+  // Wait for video to be fully loaded (not just metadata)
   await new Promise<void>((resolve, reject) => {
-    video.onloadedmetadata = () => resolve();
-    video.onerror = () => reject(new Error("Failed to load video metadata"));
-    // Safety timeout for metadata loading
-    setTimeout(() => reject(new Error("Timeout loading video metadata")), 15000);
+    const timeout = setTimeout(() => reject(new Error("Timeout loading video")), 30000);
+    video.oncanplaythrough = () => { clearTimeout(timeout); resolve(); };
+    video.onloadedmetadata = () => {
+      // Fallback: if canplaythrough doesn't fire, proceed after metadata
+      setTimeout(() => { clearTimeout(timeout); resolve(); }, 2000);
+    };
+    video.onerror = () => { clearTimeout(timeout); reject(new Error("Failed to load video")); };
+    video.load();
   });
 
   const duration = video.duration;
@@ -88,37 +103,20 @@ export async function compressVideo(
   canvas.height = outHeight;
   const ctx = canvas.getContext("2d")!;
 
-  // Get canvas stream
-  const canvasStream = canvas.captureStream(30); // 30fps
+  // Draw first frame as initial content
+  video.currentTime = 0;
+  await waitForSeek(video);
+  ctx.drawImage(video, 0, 0, outWidth, outHeight);
 
-  // Try to capture audio from the video
-  let combinedStream: MediaStream;
-  let audioCtx: AudioContext | null = null;
-  try {
-    audioCtx = new AudioContext();
-    const source = audioCtx.createMediaElementSource(video);
-    const dest = audioCtx.createMediaStreamDestination();
-    source.connect(dest);
-    source.connect(audioCtx.destination); // needed for playback
-    const audioTrack = dest.stream.getAudioTracks()[0];
-    if (audioTrack) {
-      combinedStream = new MediaStream([
-        ...canvasStream.getVideoTracks(),
-        audioTrack,
-      ]);
-    } else {
-      combinedStream = canvasStream;
-    }
-  } catch {
-    // Audio extraction not supported, proceed with video only
-    combinedStream = canvasStream;
-  }
+  // Get canvas stream — use manual frame mode (0 fps = only updates on drawImage)
+  const canvasStream = canvas.captureStream(0);
+  const videoTrack = canvasStream.getVideoTracks()[0] as any;
 
   // Determine best supported MIME type
   const mimeType = getPreferredMimeType();
 
   // Create MediaRecorder with target bitrate
-  const recorder = new MediaRecorder(combinedStream, {
+  const recorder = new MediaRecorder(canvasStream, {
     mimeType,
     videoBitsPerSecond: videoBitrate,
     audioBitsPerSecond: audioBitrate,
@@ -129,115 +127,65 @@ export async function compressVideo(
     if (e.data.size > 0) chunks.push(e.data);
   };
 
-  // Start recording
-  recorder.start(100); // collect data every 100ms
-
-  // Play video and draw frames to canvas
-  video.currentTime = 0;
-  await video.play();
-
-  // Use a combined approach for end detection:
-  // 1. timeupdate polling to detect when we're near the end
-  // 2. onended event as primary signal
-  // 3. Safety timeout as ultimate fallback
-  const blob = await new Promise<Blob>((resolve) => {
-    let animFrameId: number;
-    let resolved = false;
-    let lastTimeUpdate = Date.now();
-
-    const finalize = () => {
-      if (resolved) return;
-      resolved = true;
-      cancelAnimationFrame(animFrameId);
-      video.pause();
-
-      // Request final data and stop
-      if (recorder.state === "recording") {
-        recorder.requestData(); // flush any remaining data
-        recorder.onstop = () => {
-          const finalBlob = new Blob(chunks, { type: mimeType });
-          onProgress?.(1);
-          resolve(finalBlob);
-        };
-        // Small delay to let requestData flush, then stop
-        setTimeout(() => {
-          if (recorder.state === "recording") {
-            recorder.stop();
-          }
-        }, 200);
-      } else {
-        const finalBlob = new Blob(chunks, { type: mimeType });
-        onProgress?.(1);
-        resolve(finalBlob);
-      }
+  // Promise that resolves when recorder stops
+  const recordingDone = new Promise<Blob>((resolve) => {
+    recorder.onstop = () => {
+      const blob = new Blob(chunks, { type: mimeType });
+      resolve(blob);
     };
-
-    // Primary end detection: video ended event
-    video.onended = () => {
-      // Draw the last frame
-      ctx.drawImage(video, 0, 0, outWidth, outHeight);
-      // Give a small buffer for the last chunks to be captured
-      setTimeout(finalize, 300);
-    };
-
-    // Secondary: timeupdate-based detection
-    // On mobile Safari, onended sometimes doesn't fire
-    video.ontimeupdate = () => {
-      lastTimeUpdate = Date.now();
-      // If we're within 0.1s of the end, trigger finalize
-      if (duration > 0 && video.currentTime >= duration - 0.1) {
-        // Draw final frame
-        ctx.drawImage(video, 0, 0, outWidth, outHeight);
-        setTimeout(finalize, 500);
-      }
-    };
-
-    // Safety timeout: if video playback stalls near the end
-    const safetyInterval = setInterval(() => {
-      // If no timeupdate for 3 seconds and we're past 90% progress, finalize
-      if (Date.now() - lastTimeUpdate > 3000 && duration > 0) {
-        const progress = video.currentTime / duration;
-        if (progress > 0.9) {
-          clearInterval(safetyInterval);
-          finalize();
-        }
-      }
-      // Absolute safety: if total time exceeds 3x video duration, finalize
-      if (duration > 0 && Date.now() - lastTimeUpdate > duration * 3000 + 10000) {
-        clearInterval(safetyInterval);
-        finalize();
-      }
-    }, 1000);
-
-    // Animation loop: draw video frames to canvas
-    let lastProgress = 0;
-    const drawFrame = () => {
-      if (resolved) return;
-      if (!video.ended && !video.paused) {
-        ctx.drawImage(video, 0, 0, outWidth, outHeight);
-      }
-
-      // Report progress (cap at 0.95 until finalize sets it to 1)
-      if (onProgress && duration > 0) {
-        const progress = Math.min(video.currentTime / duration, 0.95);
-        if (progress - lastProgress > 0.01) {
-          lastProgress = progress;
-          onProgress(progress);
-        }
-      }
-
-      animFrameId = requestAnimationFrame(drawFrame);
-    };
-    animFrameId = requestAnimationFrame(drawFrame);
   });
+
+  // Start recording
+  recorder.start(500); // collect data every 500ms
+
+  // Frame-by-frame processing
+  const frameInterval = 1 / fps;
+  const totalFrames = Math.ceil(duration * fps);
+  let processedFrames = 0;
+
+  for (let frameTime = 0; frameTime < duration; frameTime += frameInterval) {
+    // Seek to the frame position
+    video.currentTime = Math.min(frameTime, duration - 0.01);
+    await waitForSeek(video);
+
+    // Draw frame to canvas
+    ctx.drawImage(video, 0, 0, outWidth, outHeight);
+
+    // Request a frame capture from the canvas stream
+    if (videoTrack && typeof videoTrack.requestFrame === "function") {
+      videoTrack.requestFrame();
+    }
+
+    // Small delay to let MediaRecorder capture the frame
+    await sleep(1000 / fps);
+
+    // Report progress
+    processedFrames++;
+    if (onProgress) {
+      onProgress(Math.min(processedFrames / totalFrames, 0.99));
+    }
+  }
+
+  // Draw and capture the very last frame
+  video.currentTime = duration - 0.01;
+  await waitForSeek(video);
+  ctx.drawImage(video, 0, 0, outWidth, outHeight);
+  if (videoTrack && typeof videoTrack.requestFrame === "function") {
+    videoTrack.requestFrame();
+  }
+  await sleep(100);
+
+  // Stop recording and wait for blob
+  recorder.stop();
+  const blob = await recordingDone;
+
+  // Report 100%
+  onProgress?.(1);
 
   // Cleanup
   URL.revokeObjectURL(videoUrl);
   video.remove();
   canvas.remove();
-  if (audioCtx) {
-    try { audioCtx.close(); } catch { /* ignore */ }
-  }
 
   const compressedSize = blob.size;
 
@@ -248,6 +196,35 @@ export async function compressVideo(
     compressionRatio: originalSize / compressedSize,
     duration,
   };
+}
+
+/**
+ * Wait for a video seek operation to complete
+ */
+function waitForSeek(video: HTMLVideoElement): Promise<void> {
+  return new Promise((resolve) => {
+    if (!video.seeking) {
+      resolve();
+      return;
+    }
+    const onSeeked = () => {
+      video.removeEventListener("seeked", onSeeked);
+      resolve();
+    };
+    video.addEventListener("seeked", onSeeked);
+    // Safety timeout: if seek doesn't complete in 2s, continue anyway
+    setTimeout(() => {
+      video.removeEventListener("seeked", onSeeked);
+      resolve();
+    }, 2000);
+  });
+}
+
+/**
+ * Simple sleep utility
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
