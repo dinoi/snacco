@@ -192,3 +192,9 @@
 - [x] Add demo thumbnails to Library page (img with video fallback)
 - [x] Add demo thumbnails to Creator dashboard (img with video fallback)
 - [x] Upload and store thumbnail during publish flow (uploadThumbnail mutation + DB columns)
+
+## v1.56 - Fix Publish SQL Error
+
+- [x] Add startup migration to auto-create thumbnail_url and thumbnail_key columns if missing in Railway PostgreSQL
+- [x] Migration added to both db.ts and db-postgres.ts (db-postgres is what routers.ts uses)
+- [x] No OAuth code touched

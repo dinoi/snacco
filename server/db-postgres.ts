@@ -15,15 +15,30 @@ import {
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let _pool: Pool | null = null;
+let _migrated = false;
 
 export async function getDb() {
   if (!_db && ENV.databaseUrl) {
     try {
-      const pool = new Pool({ connectionString: ENV.databaseUrl });
-      _db = drizzle(pool);
+      _pool = new Pool({ connectionString: ENV.databaseUrl });
+      _db = drizzle(_pool);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
+    }
+  }
+  // Run one-time migration to add missing columns
+  if (_pool && !_migrated) {
+    _migrated = true;
+    try {
+      await _pool.query(`
+        ALTER TABLE tutorials ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;
+        ALTER TABLE tutorials ADD COLUMN IF NOT EXISTS thumbnail_key TEXT;
+      `);
+      console.log("[DB Migration] thumbnail columns ensured");
+    } catch (err: any) {
+      console.warn("[DB Migration] thumbnail columns check:", err?.message);
     }
   }
   return _db;
