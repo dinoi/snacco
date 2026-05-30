@@ -170,6 +170,7 @@
 - [x] Lighter version badge colors (coral, gold, mint, sky instead of dark red/yellow/green/blue)
 - [x] Fix demo thumbnail being overwritten by tutorial video thumbnail in CreatorUpload Step 3
 - [x] Fix video compression to preserve audio track (rewrote to real-time playback with Web Audio API routing)
+- [x] Fix compression stuck at 0% (moved audio setup after playback starts, skip on iOS, added playback verification)
 - [x] Add mute/unmute toggle button to Feed video cards
 - [x] Add mute/unmute toggle button to TutorialDetail video player
 

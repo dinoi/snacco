@@ -2,10 +2,12 @@
  * Client-side video compression using Canvas + MediaRecorder.
  *
  * Uses REAL-TIME PLAYBACK to capture both video and audio together.
- * The source video plays (muted on-screen, audio routed via Web Audio API),
- * each frame is drawn to a canvas at the target resolution, and the canvas
- * stream + audio destination stream are combined into a single MediaStream
- * that MediaRecorder encodes at the target bitrate.
+ * The source video plays muted, each frame is drawn to a canvas at the
+ * target resolution, and the canvas stream is recorded by MediaRecorder.
+ *
+ * Audio is captured via Web Audio API (MediaElementAudioSourceNode) when
+ * the browser supports it. On browsers where this blocks playback (iOS Safari),
+ * audio setup is skipped and the output is video-only.
  *
  * Compression time ≈ video duration (real-time).
  */
@@ -54,20 +56,37 @@ export async function compressVideo(
 
   // Create a video element to decode the source
   const video = document.createElement("video");
-  video.muted = true; // Mute the element itself (we route audio via Web Audio API)
+  video.muted = true;
   video.playsInline = true;
   video.preload = "auto";
+  // Prevent the video from being visible
+  video.style.position = "fixed";
+  video.style.top = "-9999px";
+  video.style.left = "-9999px";
+  video.style.width = "1px";
+  video.style.height = "1px";
+  video.style.opacity = "0";
+  document.body.appendChild(video);
+
   const videoUrl = URL.createObjectURL(file);
   video.src = videoUrl;
 
-  // Wait for video to be fully loaded
+  // Wait for video metadata + enough data to start playback
   await new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error("Timeout loading video")), 30000);
-    video.oncanplaythrough = () => { clearTimeout(timeout); resolve(); };
-    video.onloadedmetadata = () => {
-      // Fallback: if canplaythrough doesn't fire, proceed after metadata loads
-      setTimeout(() => { clearTimeout(timeout); resolve(); }, 2000);
-    };
+    const timeout = setTimeout(() => {
+      if (video.readyState >= 1) {
+        console.log("[Compressor] Timeout but have metadata, proceeding");
+        resolve();
+      } else {
+        reject(new Error("Timeout loading video"));
+      }
+    }, 30000);
+    let resolved = false;
+    const done = () => { if (!resolved) { resolved = true; clearTimeout(timeout); resolve(); } };
+    video.oncanplay = done;
+    video.oncanplaythrough = done;
+    video.onloadeddata = () => { if (video.readyState >= 2) done(); };
+    video.onloadedmetadata = () => { setTimeout(done, 500); };
     video.onerror = () => { clearTimeout(timeout); reject(new Error("Failed to load video")); };
     video.load();
   });
@@ -75,6 +94,11 @@ export async function compressVideo(
   const duration = video.duration;
   const srcWidth = video.videoWidth;
   const srcHeight = video.videoHeight;
+  console.log("[Compressor] Video loaded:", { duration, srcWidth, srcHeight, readyState: video.readyState });
+
+  if (!duration || !isFinite(duration) || duration <= 0) {
+    throw new Error("Could not determine video duration");
+  }
 
   // Calculate output dimensions (maintain aspect ratio, cap at max)
   let outWidth = srcWidth;
@@ -100,32 +124,65 @@ export async function compressVideo(
   // Get canvas video stream at target fps
   const canvasStream = canvas.captureStream(fps);
 
-  // Set up audio capture via Web Audio API
-  // This routes the video's audio through an AudioContext to a MediaStreamDestination
-  // so MediaRecorder can capture it without the video element making audible sound.
+  // ── STEP 1: Start video playback FIRST (before audio setup) ──────
+  // This ensures playback works on all browsers. Audio setup happens after.
+  video.muted = true;
+  video.currentTime = 0;
+
+  try {
+    await video.play();
+  } catch (playErr) {
+    console.error("[Compressor] play() failed:", playErr);
+    throw new Error("Browser blocked video playback — cannot compress");
+  }
+
+  // Verify playback is actually progressing
+  await new Promise<void>((resolve, reject) => {
+    const checkTimeout = setTimeout(() => {
+      if (video.currentTime < 0.05) {
+        reject(new Error("Video playback stuck — browser may be blocking it"));
+      } else {
+        resolve();
+      }
+    }, 3000);
+    const onTime = () => {
+      if (video.currentTime > 0.02) {
+        clearTimeout(checkTimeout);
+        video.removeEventListener("timeupdate", onTime);
+        resolve();
+      }
+    };
+    video.addEventListener("timeupdate", onTime);
+  });
+  console.log("[Compressor] Playback confirmed, currentTime:", video.currentTime);
+
+  // ── STEP 2: Try to set up audio capture (non-blocking) ───────────
+  // On iOS Safari, createMediaElementSource can break playback,
+  // so we only attempt it on browsers where it's known to work.
   let audioCtx: AudioContext | null = null;
-  let audioSource: MediaElementAudioSourceNode | null = null;
   let audioDest: MediaStreamAudioDestinationNode | null = null;
   let hasAudio = false;
 
-  try {
-    audioCtx = new AudioContext();
-    // Resume AudioContext if suspended (required by autoplay policies on some browsers)
-    if (audioCtx.state === "suspended") {
-      await audioCtx.resume();
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  if (!isIOS) {
+    try {
+      audioCtx = new AudioContext();
+      if (audioCtx.state === "suspended") await audioCtx.resume();
+      const audioSource = audioCtx.createMediaElementSource(video);
+      audioDest = audioCtx.createMediaStreamDestination();
+      audioSource.connect(audioDest);
+      hasAudio = true;
+      console.log("[Compressor] Audio capture active");
+    } catch (e) {
+      console.warn("[Compressor] Audio capture failed, video-only output:", e);
+      if (audioCtx) { try { audioCtx.close(); } catch {} }
+      audioCtx = null;
     }
-    audioSource = audioCtx.createMediaElementSource(video);
-    audioDest = audioCtx.createMediaStreamDestination();
-    audioSource.connect(audioDest);
-    // Don't connect to audioCtx.destination — we don't want audible output during compression
-    hasAudio = true;
-    console.log("[Compressor] Audio capture set up successfully");
-  } catch (e) {
-    console.warn("[Compressor] Audio capture failed — output will have no sound:", e);
-    // Continue with video-only; the mute toggle on playback still works for uncompressed videos
+  } else {
+    console.log("[Compressor] iOS detected, skipping audio capture");
   }
 
-  // Combine canvas video stream + audio stream into one MediaStream
+  // ── STEP 3: Combine streams and start recording ──────────────────
   const combinedStream = new MediaStream();
   for (const track of canvasStream.getVideoTracks()) {
     combinedStream.addTrack(track);
@@ -136,10 +193,7 @@ export async function compressVideo(
     }
   }
 
-  // Determine best supported MIME type
   const mimeType = getPreferredMimeType();
-
-  // Create MediaRecorder with target bitrate
   const recorder = new MediaRecorder(combinedStream, {
     mimeType,
     videoBitsPerSecond: videoBitrate,
@@ -151,15 +205,13 @@ export async function compressVideo(
     if (e.data.size > 0) chunks.push(e.data);
   };
 
-  // Promise that resolves when recorder stops
   const recordingDone = new Promise<Blob>((resolve) => {
     recorder.onstop = () => {
-      const blob = new Blob(chunks, { type: mimeType });
-      resolve(blob);
+      resolve(new Blob(chunks, { type: mimeType }));
     };
   });
 
-  // Draw loop: continuously draw video frames to canvas at ~fps rate
+  // Draw loop: continuously draw video frames to canvas
   let animationRunning = true;
   const drawIntervalMs = 1000 / fps;
 
@@ -169,28 +221,15 @@ export async function compressVideo(
     setTimeout(drawLoop, drawIntervalMs);
   }
 
-  // Start recording
-  recorder.start(500); // collect data every 500ms
-
-  // Draw first frame
-  ctx.drawImage(video, 0, 0, outWidth, outHeight);
-
-  // Start the draw loop
+  // Start recording + draw loop
+  recorder.start(500);
   drawLoop();
-
-  // Unmute the video element so audio flows through the Web Audio API source node
-  // (MediaElementSource requires the element to not be muted for audio to flow)
-  video.muted = false;
-  video.volume = 0; // Keep silent on speakers — audio goes through AudioContext only
-
-  // Start playback
-  video.currentTime = 0;
-  await video.play();
 
   // Progress reporting
   const progressInterval = setInterval(() => {
     if (onProgress && duration > 0) {
-      onProgress(Math.min(video.currentTime / duration, 0.99));
+      const progress = Math.min(video.currentTime / duration, 0.99);
+      onProgress(progress);
     }
   }, 250);
 
@@ -198,13 +237,10 @@ export async function compressVideo(
   await new Promise<void>((resolve) => {
     video.onended = () => resolve();
     video.onpause = () => {
-      // Sometimes 'ended' doesn't fire; check if we're near the end
-      if (video.currentTime >= duration - 0.1) {
-        resolve();
-      }
+      if (video.currentTime >= duration - 0.1) resolve();
     };
-    // Safety timeout: if video doesn't end naturally, stop after duration + 2s
-    setTimeout(() => resolve(), (duration + 2) * 1000);
+    // Safety timeout
+    setTimeout(() => resolve(), (duration + 3) * 1000);
   });
 
   // Stop everything
@@ -213,8 +249,6 @@ export async function compressVideo(
 
   // Draw one last frame
   ctx.drawImage(video, 0, 0, outWidth, outHeight);
-
-  // Small delay to ensure last frame is captured
   await sleep(100);
 
   // Stop recording and wait for blob
@@ -225,14 +259,14 @@ export async function compressVideo(
   onProgress?.(1);
 
   // Cleanup
-  if (audioCtx) {
-    try { audioCtx.close(); } catch {}
-  }
+  if (audioCtx) { try { audioCtx.close(); } catch {} }
   URL.revokeObjectURL(videoUrl);
+  video.pause();
   video.remove();
   canvas.remove();
 
   const compressedSize = blob.size;
+  console.log("[Compressor] Done:", { originalSize, compressedSize, ratio: (originalSize / compressedSize).toFixed(1) });
 
   return {
     blob,
@@ -243,9 +277,6 @@ export async function compressVideo(
   };
 }
 
-/**
- * Simple sleep utility
- */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
