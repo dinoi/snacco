@@ -108,9 +108,9 @@ export function registerGitHubOAuthRoutes(app: Express) {
       }
 
       // Upsert user in database
-      const githubId = `github_${userInfo.id}`;
+      const openId = `github_${userInfo.id}`;
       const user = await db.upsertUser({
-        githubId,
+        openId,
         name: userInfo.name || userInfo.login,
         email: email || null,
         loginMethod: "github",
@@ -119,7 +119,7 @@ export function registerGitHubOAuthRoutes(app: Express) {
 
       // Create session token (JWT)
       const sessionToken = await createSessionToken(user.id, {
-        githubId,
+        openId,
         name: user.name || "",
         expiresInMs: ONE_YEAR_MS,
       });
@@ -146,12 +146,12 @@ export function registerGitHubOAuthRoutes(app: Express) {
 
 export async function createSessionToken(
   userId: number,
-  payload: { githubId: string; name: string; expiresInMs: number }
+  payload: { openId: string; name: string; expiresInMs: number }
 ): Promise<string> {
   const secret = new TextEncoder().encode(ENV.cookieSecret);
   const token = await new SignJWT({
     userId,
-    githubId: payload.githubId,
+    openId: payload.openId,
     name: payload.name,
   })
     .setProtectedHeader({ alg: "HS256" })
@@ -161,7 +161,7 @@ export async function createSessionToken(
   return token;
 }
 
-export async function verifySessionToken(token: string): Promise<{ userId: number; githubId: string; name: string } | null> {
+export async function verifySessionToken(token: string): Promise<{ userId: number; openId: string; name: string } | null> {
   try {
     const secret = new TextEncoder().encode(ENV.cookieSecret);
     const verified = await jwtVerify(token, secret);

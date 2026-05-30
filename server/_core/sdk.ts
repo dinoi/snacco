@@ -284,12 +284,12 @@ class SDKServer {
       try {
         const userInfo = await this.getUserInfoWithJwt(sessionCookie ?? "");
         await db.upsertUser({
-          githubId: userInfo.openId,
+          openId: userInfo.openId,
           name: userInfo.name || null,
           email: userInfo.email ?? null,
           lastSignedIn: signedInAt,
         });
-        user = await db.getUserByGithubId(userInfo.openId);
+        user = await db.getUserByOpenId(userInfo.openId);
       } catch (error) {
         console.error("[Auth] Failed to sync user from OAuth:", error);
         throw ForbiddenError("Failed to sync user info");
@@ -301,7 +301,7 @@ class SDKServer {
     }
 
     await db.upsertUser({
-      githubId: user.githubId,
+      openId: user.openId,
       lastSignedIn: signedInAt,
     });
 

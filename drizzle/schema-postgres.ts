@@ -17,7 +17,7 @@ export const users = pgTable(
   "users",
   {
     id: serial("id").primaryKey(),
-    githubId: varchar("openId", { length: 64 }).notNull().unique(),
+    openId: varchar("openId", { length: 64 }).notNull().unique(),
     name: text("name"),
     email: varchar("email", { length: 320 }),
     loginMethod: varchar("loginMethod", { length: 64 }).notNull().default("github"),
@@ -29,7 +29,7 @@ export const users = pgTable(
     lastSignedIn: timestamp("lastSignedIn").notNull().defaultNow(),
   },
   (table) => ({
-    githubIdUnique: unique("users_openId_unique").on(table.githubId),
+    openIdUnique: unique("users_openId_unique").on(table.openId),
   })
 );
 
