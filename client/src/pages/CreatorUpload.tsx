@@ -164,6 +164,7 @@ export default function CreatorUpload() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadingType, setUploadingType] = useState<"demo" | "tutorial" | null>(null);
   const [thumbnailDataUrl, setThumbnailDataUrl] = useState<string | null>(null);
+  const [demoThumbnailUrl, setDemoThumbnailUrl] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   // Player state (chapter marking step)
@@ -300,6 +301,7 @@ export default function CreatorUpload() {
       };
       if (type === "demo") {
         setDemoVideo(uploaded);
+        setDemoThumbnailUrl(thumbnailDataUrl);
         setTimeout(() => setStep("tutorial"), 400);
       } else {
         setTutorialVideo(uploaded);
@@ -567,7 +569,11 @@ export default function CreatorUpload() {
             {demoVideo && (
               <div className="flex items-center gap-3 bg-card border border-border rounded-xl px-3 py-2">
                 <div className="w-10 h-14 rounded-lg overflow-hidden bg-black shrink-0">
-                  <video src={demoVideo.localUrl} className="w-full h-full object-cover" muted playsInline />
+                  {(demoThumbnailUrl || thumbnailDataUrl) ? (
+                    <img src={demoThumbnailUrl || thumbnailDataUrl!} className="w-full h-full object-cover" alt="" />
+                  ) : (
+                    <video src={demoVideo.localUrl} className="w-full h-full object-cover" muted playsInline autoPlay preload="auto" />
+                  )}
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Demo clip uploaded</p>

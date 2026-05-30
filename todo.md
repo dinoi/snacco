@@ -115,3 +115,8 @@
 - [x] Feed shows black screen instead of video playback (removed crossOrigin="anonymous" from all video elements - CORS blocking Railway S3)
 - [x] No thumbnail generated on mobile for demo video upload (improved capture: seek to 0.5s, black-frame detection, 3s timeout, webkit-playsinline)
 - [x] Long video upload (2 min) fails on mobile (added 10-min request timeout for upload route)
+
+## Bug Fixes v1.43
+
+- [x] Fix mobile demo thumbnail display in Step 3 — replaced `<video>` element (shows black on mobile Safari when paused) with `<img>` using thumbnail data URL
+- [x] Add separate `demoThumbnailUrl` state so demo thumbnail persists when tutorial upload starts (previously `setThumbnailDataUrl(null)` at start of tutorial upload would clear the demo thumbnail)
