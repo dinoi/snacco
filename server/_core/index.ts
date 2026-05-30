@@ -12,7 +12,8 @@ import { serveStatic, setupVite } from "./vite";
 import { registerUploadRoute } from "../uploadRoute-railway";
 import { ENV } from "./env";
 import { getLocalFilePath, getS3Client } from "../railway-storage";
-import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
+import { Readable } from "stream";
 import fs from "fs";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -83,54 +84,93 @@ async function startServer() {
 
     try {
       const s3 = getS3Client();
-
-      // Handle Range requests for video seeking
       const rangeHeader = req.headers.range;
-      const getParams: any = {
+
+      // First, get the object metadata to know total size
+      // This is critical for video playback — browsers need Content-Length
+      const headCommand = new HeadObjectCommand({
         Bucket: ENV.railwayStorageBucket,
         Key: key,
-      };
-      if (rangeHeader) {
-        getParams.Range = rangeHeader;
-      }
-
-      const command = new GetObjectCommand(getParams);
-      const response = await s3.send(command);
-
-      if (!response.Body) {
-        return res.status(404).json({ error: "File not found in storage" });
-      }
-
-      // Set response headers
-      const contentType = response.ContentType || "video/mp4";
-      res.setHeader("Content-Type", contentType);
-      res.setHeader("Accept-Ranges", "bytes");
-      res.setHeader("Cache-Control", "public, max-age=86400"); // Cache 24h
-
-      if (response.ContentLength !== undefined) {
-        res.setHeader("Content-Length", response.ContentLength);
-      }
-
-      if (rangeHeader && response.ContentRange) {
-        res.setHeader("Content-Range", response.ContentRange);
-        res.status(206);
-      } else {
-        res.status(200);
-      }
-
-      // Stream the body
-      const stream = response.Body as NodeJS.ReadableStream;
-      stream.pipe(res);
-      stream.on("error", (err) => {
-        console.error("[VideoProxy] Stream error:", err);
-        if (!res.headersSent) res.status(500).json({ error: "Stream failed" });
       });
+      const headResponse = await s3.send(headCommand);
+      const totalSize = headResponse.ContentLength ?? 0;
+      const contentType = headResponse.ContentType || "video/mp4";
+
+      if (rangeHeader) {
+        // Parse Range header: "bytes=start-end"
+        const parts = rangeHeader.replace(/bytes=/, "").split("-");
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : totalSize - 1;
+        const chunkSize = end - start + 1;
+
+        const getCommand = new GetObjectCommand({
+          Bucket: ENV.railwayStorageBucket,
+          Key: key,
+          Range: `bytes=${start}-${end}`,
+        });
+        const getResponse = await s3.send(getCommand);
+
+        if (!getResponse.Body) {
+          return res.status(404).json({ error: "File not found in storage" });
+        }
+
+        res.writeHead(206, {
+          "Content-Range": `bytes ${start}-${end}/${totalSize}`,
+          "Accept-Ranges": "bytes",
+          "Content-Length": chunkSize,
+          "Content-Type": contentType,
+          "Cache-Control": "public, max-age=86400",
+        });
+
+        // Convert SDK stream to Node.js Readable and pipe
+        const bodyStream = getResponse.Body as any;
+        if (typeof bodyStream.transformToByteArray === "function") {
+          const bytes = await bodyStream.transformToByteArray();
+          res.end(Buffer.from(bytes));
+        } else if (typeof bodyStream.pipe === "function") {
+          bodyStream.pipe(res);
+        } else {
+          const bytes = await bodyStream.transformToByteArray();
+          res.end(Buffer.from(bytes));
+        }
+      } else {
+        // No Range header — return full file
+        const getCommand = new GetObjectCommand({
+          Bucket: ENV.railwayStorageBucket,
+          Key: key,
+        });
+        const getResponse = await s3.send(getCommand);
+
+        if (!getResponse.Body) {
+          return res.status(404).json({ error: "File not found in storage" });
+        }
+
+        res.writeHead(200, {
+          "Accept-Ranges": "bytes",
+          "Content-Length": totalSize,
+          "Content-Type": contentType,
+          "Cache-Control": "public, max-age=86400",
+        });
+
+        const bodyStream = getResponse.Body as any;
+        if (typeof bodyStream.transformToByteArray === "function") {
+          const bytes = await bodyStream.transformToByteArray();
+          res.end(Buffer.from(bytes));
+        } else if (typeof bodyStream.pipe === "function") {
+          bodyStream.pipe(res);
+        } else {
+          const bytes = await bodyStream.transformToByteArray();
+          res.end(Buffer.from(bytes));
+        }
+      }
     } catch (err: any) {
       console.error("[VideoProxy] Error fetching from S3:", key, err?.message);
       if (err?.name === "NoSuchKey" || err?.$metadata?.httpStatusCode === 404) {
         return res.status(404).json({ error: "Video not found" });
       }
-      return res.status(500).json({ error: "Failed to fetch video" });
+      if (!res.headersSent) {
+        return res.status(500).json({ error: "Failed to fetch video" });
+      }
     }
   });
   // tRPC API

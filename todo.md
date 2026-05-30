@@ -127,3 +127,9 @@
 - [x] Add video proxy endpoint `/api/video/:key(*)` that streams video from Railway S3 to client
 - [x] Modify backend procedures (feed, get, library, myTutorials, adminList) to rewrite video URLs to proxy URLs
 - [x] Ensure CreatorEdit doesn't save proxy URLs back to DB (use separate resolved fields or keep keys intact)
+
+## v1.45
+
+- [x] Fix video proxy playback (videos show still but don't play — likely Range/streaming issue)
+- [x] Feed: Move UI overlay above the fold so it's visible without scrolling while video loops
+- [x] TutorialDetail: Overlay title/creator/desc/purchase button on video; chapters below on black background
