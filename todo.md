@@ -151,3 +151,9 @@
 - [x] Cache presigned URLs server-side (avoid regenerating on every request)
 - [x] Add #t=0.001 to video src URLs to force immediate first-frame load on mobile
 - [x] Move moov atom to front of MP4 on upload (fast-start) for instant playback
+
+## v1.49 - Video Compression + Stall Recovery
+
+- [x] Client-side video compression before upload (target ~4Mbps bitrate, reduce 19MB to ~2-3MB)
+- [x] Integrate compression into CreatorUpload with progress indicator
+- [x] Add stall recovery to Feed player (retry .play() on stalled event)

@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { formatTime } from "@/lib/utils";
+import { compressVideo, isCompressionSupported, shouldCompress } from "@/lib/videoCompressor";
 import {
   CheckCircle,
   ChevronUp,
@@ -166,6 +167,8 @@ export default function CreatorUpload() {
   const [thumbnailDataUrl, setThumbnailDataUrl] = useState<string | null>(null);
   const [demoThumbnailUrl, setDemoThumbnailUrl] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [compressing, setCompressing] = useState(false);
+  const [compressProgress, setCompressProgress] = useState(0);
 
   // Player state (chapter marking step)
   const [isPlaying, setIsPlaying] = useState(false);
@@ -280,18 +283,44 @@ export default function CreatorUpload() {
       return;
     }
 
-    const localUrl = URL.createObjectURL(file);
     setThumbnailDataUrl(null);
-    setUploading(true);
-    setUploadProgress(0);
     setUploadingType(type);
     setUploadError(null);
 
     // Generate canvas thumbnail in parallel (iOS-safe)
     generateThumbnail(file).then((dataUrl) => setThumbnailDataUrl(dataUrl));
 
+    // ── Compress video if it's large (>5MB) and browser supports it ──
+    let fileToUpload: File = file;
+    if (shouldCompress(file, 5) && isCompressionSupported()) {
+      setCompressing(true);
+      setCompressProgress(0);
+      try {
+        toast.info(`Compressing video for faster streaming...`);
+        const result = await compressVideo(file, {
+          videoBitrate: 4_000_000, // 4 Mbps
+          maxWidth: 1080,
+          maxHeight: 1920,
+          onProgress: setCompressProgress,
+        });
+        const compressedFile = new File([result.blob], file.name, { type: result.blob.type || "video/mp4" });
+        const savings = ((1 - result.compressedSize / result.originalSize) * 100).toFixed(0);
+        toast.success(`Compressed: ${savings}% smaller (${(result.compressedSize / 1024 / 1024).toFixed(1)}MB)`);
+        fileToUpload = compressedFile;
+      } catch (err) {
+        console.warn("[Compression] Failed, uploading original:", err);
+        toast.info("Compression skipped, uploading original file.");
+      } finally {
+        setCompressing(false);
+      }
+    }
+
+    const localUrl = URL.createObjectURL(fileToUpload);
+    setUploading(true);
+    setUploadProgress(0);
+
     try {
-      const result = await uploadVideoDirect(file, type, setUploadProgress);
+      const result = await uploadVideoDirect(fileToUpload, type, setUploadProgress);
       const uploaded: UploadedVideo = {
         url: result.url,
         key: result.key,
@@ -491,7 +520,7 @@ export default function CreatorUpload() {
             <input ref={demoInputRef} type="file" accept="video/mp4,video/*" className="hidden"
               onChange={e => { const f = e.target.files?.[0]; if (f) handleVideoSelect(f, "demo"); e.target.value = ""; }} />
 
-            {!demoVideo && !uploading && (
+            {!demoVideo && !uploading && !compressing && (
               <button
                 onClick={() => { setUploadError(null); demoInputRef.current?.click(); }}
                 className="w-full rounded-2xl border-2 border-dashed border-border flex flex-col bg-card hover:border-primary/50 transition-colors px-6 pt-10 pb-8"
@@ -506,6 +535,20 @@ export default function CreatorUpload() {
                   A demo is a quick 30-second preview of the skill you are teaching. It is what shows up on the discovery feed and what people see when you share a link.
                 </p>
               </button>
+            )}
+
+            {compressing && uploadingType === "demo" && (
+              <div className="relative w-full rounded-2xl overflow-hidden bg-black flex flex-col items-center justify-center gap-4 px-6 py-10" style={{ minHeight: '60vh' }}>
+                <div className="relative z-10 flex flex-col items-center gap-4 w-full">
+                  <Loader2 size={32} className="text-primary animate-spin" />
+                  <p className="text-white font-bold text-lg">Compressing Video…</p>
+                  <p className="text-white/60 text-sm">Optimizing for fast streaming • {Math.round(compressProgress * 100)}%</p>
+                  <div className="w-full max-w-xs h-2 bg-white/20 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-200"
+                      style={{ width: `${compressProgress * 100}%`, background: "linear-gradient(90deg, oklch(0.7 0.2 200), oklch(0.6 0.25 250))" }} />
+                  </div>
+                </div>
+              </div>
             )}
 
             {uploading && uploadingType === "demo" && (
@@ -587,7 +630,7 @@ export default function CreatorUpload() {
             <input ref={tutorialInputRef} type="file" accept="video/mp4,video/*" className="hidden"
               onChange={e => { const f = e.target.files?.[0]; if (f) handleVideoSelect(f, "tutorial"); e.target.value = ""; }} />
 
-            {!tutorialVideo && !uploading && (
+            {!tutorialVideo && !uploading && !compressing && (
               <button
                 onClick={() => { setUploadError(null); tutorialInputRef.current?.click(); }}
                 className="w-full rounded-2xl border-2 border-dashed border-border flex flex-col bg-card hover:border-primary/50 transition-colors px-6 pt-10 pb-8"
@@ -602,6 +645,20 @@ export default function CreatorUpload() {
                   A tutorial is the full video. The max length is 5 minutes. You will have the ability to add chapter breaks to it later.
                 </p>
               </button>
+            )}
+
+            {compressing && uploadingType === "tutorial" && (
+              <div className="relative w-full rounded-2xl overflow-hidden bg-black flex flex-col items-center justify-center gap-4 px-6 py-10" style={{ minHeight: '60vh' }}>
+                <div className="relative z-10 flex flex-col items-center gap-4 w-full">
+                  <Loader2 size={32} className="text-primary animate-spin" />
+                  <p className="text-white font-bold text-lg">Compressing Video…</p>
+                  <p className="text-white/60 text-sm">Optimizing for fast streaming • {Math.round(compressProgress * 100)}%</p>
+                  <div className="w-full max-w-xs h-2 bg-white/20 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-200"
+                      style={{ width: `${compressProgress * 100}%`, background: "linear-gradient(90deg, oklch(0.7 0.2 200), oklch(0.6 0.25 250))" }} />
+                  </div>
+                </div>
+              </div>
             )}
 
             {uploading && uploadingType === "tutorial" && (

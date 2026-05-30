@@ -17,6 +17,19 @@ function FeedCard({ tutorial, onNavigate, index }: { tutorial: any; onNavigate: 
     const card = cardRef.current;
     if (!video || !card) return;
 
+    // Stall recovery: retry play when video stalls
+    let stallRetryTimer: ReturnType<typeof setTimeout> | null = null;
+    const handleStall = () => {
+      if (stallRetryTimer) clearTimeout(stallRetryTimer);
+      stallRetryTimer = setTimeout(() => {
+        if (video.paused && isVisible) {
+          video.play().catch(() => {});
+        }
+      }, 500);
+    };
+    video.addEventListener('stalled', handleStall);
+    video.addEventListener('waiting', handleStall);
+
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
@@ -25,15 +38,20 @@ function FeedCard({ tutorial, onNavigate, index }: { tutorial: any; onNavigate: 
         } else {
           setIsVisible(false);
           video.pause();
-          video.currentTime = 0; // Reset so it starts fresh when scrolled back
+          video.currentTime = 0;
         }
       },
       { threshold: 0.6 }
     );
 
     observer.observe(card);
-    return () => observer.disconnect();
-  }, []);
+    return () => {
+      observer.disconnect();
+      video.removeEventListener('stalled', handleStall);
+      video.removeEventListener('waiting', handleStall);
+      if (stallRetryTimer) clearTimeout(stallRetryTimer);
+    };
+  }, [isVisible]);
 
   return (
     <div
