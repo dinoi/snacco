@@ -145,3 +145,9 @@
 - [x] Return presigned S3 URLs directly from tRPC procedures (eliminate redirect hop)
 - [x] Smart preloading: preload=metadata for off-screen videos, preload=auto for visible
 - [x] Add poster/thumbnail frame support (uses preload=metadata first frame; DB thumbnail column deferred)
+
+## v1.48 - Video Playback Speed
+
+- [x] Cache presigned URLs server-side (avoid regenerating on every request)
+- [x] Add #t=0.001 to video src URLs to force immediate first-frame load on mobile
+- [x] Move moov atom to front of MP4 on upload (fast-start) for instant playback

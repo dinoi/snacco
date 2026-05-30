@@ -33,19 +33,36 @@ const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
 // Generate presigned URLs directly so the browser streams from S3 without a redirect hop.
 import { storageGetSignedUrl } from "./railway-storage";
 
+// ─── Presigned URL cache (avoids regenerating on every request) ──────────────
+// Cache entries expire after 50 minutes (presigned URLs valid for 60 min)
+const presignedCache = new Map<string, { url: string; expiresAt: number }>();
+const CACHE_TTL_MS = 50 * 60 * 1000; // 50 minutes
+
+async function getCachedPresignedUrl(key: string): Promise<string> {
+  const now = Date.now();
+  const cached = presignedCache.get(key);
+  if (cached && cached.expiresAt > now) {
+    return cached.url;
+  }
+  const url = await storageGetSignedUrl(key, 3600);
+  presignedCache.set(key, { url, expiresAt: now + CACHE_TTL_MS });
+  return url;
+}
+
 async function resolveVideoUrl<T extends { demoVideoUrl: string; demoVideoKey: string; tutorialVideoUrl: string; tutorialVideoKey: string }>(tutorial: T): Promise<T> {
   const [demoUrl, tutorialUrl] = await Promise.all([
     tutorial.demoVideoKey
-      ? storageGetSignedUrl(tutorial.demoVideoKey, 3600).catch(() => `/api/video/${tutorial.demoVideoKey}`)
+      ? getCachedPresignedUrl(tutorial.demoVideoKey).catch(() => `/api/video/${tutorial.demoVideoKey}`)
       : Promise.resolve(tutorial.demoVideoUrl),
     tutorial.tutorialVideoKey
-      ? storageGetSignedUrl(tutorial.tutorialVideoKey, 3600).catch(() => `/api/video/${tutorial.tutorialVideoKey}`)
+      ? getCachedPresignedUrl(tutorial.tutorialVideoKey).catch(() => `/api/video/${tutorial.tutorialVideoKey}`)
       : Promise.resolve(tutorial.tutorialVideoUrl),
   ]);
+  // Append #t=0.001 to force mobile browsers to load the first frame immediately
   return {
     ...tutorial,
-    demoVideoUrl: demoUrl,
-    tutorialVideoUrl: tutorialUrl,
+    demoVideoUrl: demoUrl + (demoUrl.startsWith('http') ? '#t=0.001' : ''),
+    tutorialVideoUrl: tutorialUrl + (tutorialUrl.startsWith('http') ? '#t=0.001' : ''),
   };
 }
 
@@ -217,7 +234,25 @@ export const appRouter = router({
           for (let i = 0; i < totalChunks; i++) {
             parts.push(fs.readFileSync(chunkPath(dir, i)));
           }
-          const fullBuffer = Buffer.concat(parts);
+          let fullBuffer = Buffer.concat(parts);
+
+          // Move moov atom to front (fast-start) for instant playback
+          // Only process files under 200MB to stay within 512MB Railway RAM limit
+          const MAX_FASTSTART_SIZE = 200 * 1024 * 1024;
+          if (fullBuffer.length <= MAX_FASTSTART_SIZE && (input.mimeType === "video/mp4" || !input.mimeType)) {
+            try {
+              const { faststart } = await import("@fyreware/moov-faststart");
+              const optimized = faststart(fullBuffer);
+              if (optimized && optimized.length > 0) {
+                fullBuffer = Buffer.from(optimized);
+                console.log(`[ChunkedUpload] Moov atom moved to front (${(fullBuffer.length / 1024 / 1024).toFixed(1)}MB)`);
+              }
+            } catch (e) {
+              console.warn("[ChunkedUpload] Fast-start skipped:", (e as Error).message);
+            }
+          } else if (fullBuffer.length > MAX_FASTSTART_SIZE) {
+            console.log(`[ChunkedUpload] Skipping fast-start for large file (${(fullBuffer.length / 1024 / 1024).toFixed(1)}MB > 200MB)`);
+          }
 
           const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
           const inputKey = `videos/${ctx.user.id}/${input.type}/${Date.now()}_${safeName}`;
