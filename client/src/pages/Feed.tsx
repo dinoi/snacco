@@ -375,6 +375,26 @@ export default function Feed() {
     return () => window.removeEventListener("wheel", handleWheel);
   }, []); // empty deps — reads everything through refs
 
+  // ── Desktop keyboard arrow navigation ─────────────────────────────
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isAnimatingRef.current) return;
+      const idx = currentIndexRef.current;
+      const total = totalSlidesRef.current;
+
+      if (e.key === "ArrowDown" && idx < total - 1) {
+        e.preventDefault();
+        goToSlideRef.current(idx + 1);
+      } else if (e.key === "ArrowUp" && idx > 0) {
+        e.preventDefault();
+        goToSlideRef.current(idx - 1);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   return (
     <div className="h-dvh w-full bg-black overflow-hidden relative">
       {/* Header — fixed overlay */}

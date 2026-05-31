@@ -166,6 +166,7 @@ export default function CreatorUpload() {
   const [uploadingType, setUploadingType] = useState<"demo" | "tutorial" | null>(null);
   const [thumbnailDataUrl, setThumbnailDataUrl] = useState<string | null>(null);
   const [demoThumbnailUrl, setDemoThumbnailUrl] = useState<string | null>(null);
+  const [tutorialThumbnailDataUrl, setTutorialThumbnailDataUrl] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [compressing, setCompressing] = useState(false);
   const [compressProgress, setCompressProgress] = useState(0);
@@ -293,6 +294,11 @@ export default function CreatorUpload() {
       generateThumbnail(file).then((dataUrl) => {
         setThumbnailDataUrl(dataUrl);
         setDemoThumbnailUrl(dataUrl);
+      });
+    } else {
+      // Generate a separate thumbnail from the tutorial video for the chapter tagging screen
+      generateThumbnail(file).then((dataUrl) => {
+        setTutorialThumbnailDataUrl(dataUrl);
       });
     }
 
@@ -575,10 +581,17 @@ export default function CreatorUpload() {
                 <div className="relative z-10 flex flex-col items-center gap-4 w-full">
                   <Loader2 size={32} className="text-primary animate-spin" />
                   <p className="text-white font-bold text-lg">Compressing Video…</p>
-                  <p className="text-white/60 text-sm">Optimizing for fast streaming • {Math.round(compressProgress * 100)}%</p>
+                  <p className="text-white/60 text-sm text-center">
+                    {compressProgress < 0.05
+                      ? "Setting up compression…"
+                      : `Playing through video in real-time • ${Math.round(compressProgress * 100)}%`}
+                  </p>
+                  <p className="text-white/40 text-xs text-center">
+                    This takes roughly as long as the video itself
+                  </p>
                   <div className="w-full max-w-xs h-2 bg-white/20 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full transition-all duration-200"
-                      style={{ width: `${compressProgress * 100}%`, background: "linear-gradient(90deg, oklch(0.7 0.2 200), oklch(0.6 0.25 250))" }} />
+                    <div className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${Math.max(compressProgress * 100, 2)}%`, background: "linear-gradient(90deg, oklch(0.7 0.2 200), oklch(0.6 0.25 250))" }} />
                   </div>
                 </div>
               </div>
@@ -685,10 +698,17 @@ export default function CreatorUpload() {
                 <div className="relative z-10 flex flex-col items-center gap-4 w-full">
                   <Loader2 size={32} className="text-primary animate-spin" />
                   <p className="text-white font-bold text-lg">Compressing Video…</p>
-                  <p className="text-white/60 text-sm">Optimizing for fast streaming • {Math.round(compressProgress * 100)}%</p>
+                  <p className="text-white/60 text-sm text-center">
+                    {compressProgress < 0.05
+                      ? "Setting up compression…"
+                      : `Playing through video in real-time • ${Math.round(compressProgress * 100)}%`}
+                  </p>
+                  <p className="text-white/40 text-xs text-center">
+                    This takes roughly as long as the video itself
+                  </p>
                   <div className="w-full max-w-xs h-2 bg-white/20 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full transition-all duration-200"
-                      style={{ width: `${compressProgress * 100}%`, background: "linear-gradient(90deg, oklch(0.7 0.2 200), oklch(0.6 0.25 250))" }} />
+                    <div className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${Math.max(compressProgress * 100, 2)}%`, background: "linear-gradient(90deg, oklch(0.7 0.2 200), oklch(0.6 0.25 250))" }} />
                   </div>
                 </div>
               </div>
@@ -761,7 +781,7 @@ export default function CreatorUpload() {
               <video
                 ref={tutorialVideoRef}
                 src={tutorialVideo.localUrl || tutorialVideo.url}
-                poster={thumbnailDataUrl || undefined}
+                poster={tutorialThumbnailDataUrl || undefined}
                 className="w-full h-full object-contain"
                 playsInline
                 preload="auto"
@@ -769,6 +789,15 @@ export default function CreatorUpload() {
                 onLoadedMetadata={() => setDuration(tutorialVideoRef.current?.duration ?? 0)}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
+                onError={() => {
+                  // If local blob URL fails, fall back to server URL
+                  const vid = tutorialVideoRef.current;
+                  if (vid && tutorialVideo.localUrl && vid.src !== tutorialVideo.url) {
+                    console.warn("[ChapterMarking] Local blob failed, falling back to server URL");
+                    vid.src = tutorialVideo.url;
+                    vid.load();
+                  }
+                }}
               />
               {/* Chapter markers on scrubber */}
               <div className="absolute bottom-0 left-0 right-0 px-3 pb-3 space-y-2">

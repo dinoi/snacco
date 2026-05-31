@@ -6,6 +6,7 @@ import path from "path";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import type { Request, Response } from "express";
 import { registerGitHubOAuthRoutes } from "./github-oauth";
+import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context-github";
 import { serveStatic, setupVite } from "./vite";
@@ -55,6 +56,7 @@ async function startServer() {
   });
   registerGitHubOAuthRoutes(app);
   registerUploadRoute(app);
+  registerStorageProxy(app);
   
   // Serve local storage files
   app.get("/api/storage/:path(*)", (req: Request, res: Response) => {

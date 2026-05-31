@@ -132,6 +132,7 @@ export default function CreatorEdit() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadingType, setUploadingType] = useState<"demo" | "tutorial" | null>(null);
   const [thumbnailDataUrl, setThumbnailDataUrl] = useState<string | null>(null);
+  const [tutorialThumbnailDataUrl, setTutorialThumbnailDataUrl] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [compressing, setCompressing] = useState(false);
   const [compressProgress, setCompressProgress] = useState(0);
@@ -291,11 +292,15 @@ export default function CreatorEdit() {
       return;
     }
 
-    setThumbnailDataUrl(null);
     setUploadingType(type);
     setUploadError(null);
 
-    generateThumbnail(file).then((dataUrl) => setThumbnailDataUrl(dataUrl));
+    if (type === "demo") {
+      setThumbnailDataUrl(null);
+      generateThumbnail(file).then((dataUrl) => setThumbnailDataUrl(dataUrl));
+    } else {
+      generateThumbnail(file).then((dataUrl) => setTutorialThumbnailDataUrl(dataUrl));
+    }
 
     // ── Compress video if it's large (>5MB) and browser supports it ──
     let fileToUpload: File = file;
@@ -689,7 +694,7 @@ export default function CreatorEdit() {
               <video
                 ref={tutorialVideoRef}
                 src={tutorialVideo.localUrl}
-                poster={thumbnailDataUrl || undefined}
+                poster={tutorialThumbnailDataUrl || thumbnailDataUrl || undefined}
                 className="w-full rounded-xl mb-4"
                 controls
                 preload="auto"

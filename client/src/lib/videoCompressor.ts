@@ -2,18 +2,18 @@
  * Client-side video compression using Canvas + MediaRecorder.
  *
  * Uses REAL-TIME PLAYBACK to capture both video and audio together.
- * The source video plays muted, each frame is drawn to a canvas at the
+ * The source video plays, each frame is drawn to a canvas at the
  * target resolution, and the canvas stream is recorded by MediaRecorder.
  *
- * Audio is captured via Web Audio API (MediaElementAudioSourceNode) when
- * the browser supports it. On browsers where this blocks playback (iOS Safari),
- * audio setup is skipped and the output is video-only.
+ * Frame capture uses requestVideoFrameCallback (preferred) or
+ * requestAnimationFrame (fallback) — NOT setTimeout which gets throttled
+ * on iOS Safari for offscreen/background elements.
  *
  * Compression time ≈ video duration (real-time).
  */
 
 export interface CompressOptions {
-  /** Target video bitrate in bits/sec. Default: 4_000_000 (4 Mbps) */
+  /** Target video bitrate in bits/sec. Default: 2_500_000 (2.5 Mbps) */
   videoBitrate?: number;
   /** Target audio bitrate in bits/sec. Default: 128_000 (128 kbps) */
   audioBitrate?: number;
@@ -44,7 +44,7 @@ export async function compressVideo(
   options: CompressOptions = {}
 ): Promise<CompressResult> {
   const {
-    videoBitrate = 4_000_000,
+    videoBitrate = 2_500_000,
     audioBitrate = 128_000,
     maxWidth = 1080,
     maxHeight = 1920,
@@ -62,13 +62,16 @@ export async function compressVideo(
   video.muted = true;
   video.playsInline = true;
   video.preload = "auto";
-  // Keep the video offscreen but with real dimensions (iOS needs this)
+  // IMPORTANT: Keep video visible (but tiny) — iOS Safari throttles
+  // timers and pauses media for truly hidden elements
   video.style.position = "fixed";
-  video.style.top = "-9999px";
-  video.style.left = "-9999px";
-  video.style.width = "320px";
-  video.style.height = "240px";
+  video.style.bottom = "0";
+  video.style.left = "0";
+  video.style.width = "1px";
+  video.style.height = "1px";
   video.style.opacity = "0.01";
+  video.style.zIndex = "-1";
+  video.style.pointerEvents = "none";
   document.body.appendChild(video);
 
   const videoUrl = URL.createObjectURL(file);
@@ -132,7 +135,6 @@ export async function compressVideo(
   const canvasStream = canvas.captureStream(fps);
 
   // ── STEP 1: Start video playback FIRST (before audio setup) ──────
-  // This ensures playback works on all browsers. Audio setup happens after.
   video.muted = true;
   video.currentTime = 0;
 
@@ -162,23 +164,17 @@ export async function compressVideo(
     video.addEventListener("timeupdate", onTime);
   });
   console.log("[Compressor] Playback confirmed, currentTime:", video.currentTime);
-  onProgress?.(0.04); // 4% - playback confirmed, setting up recording
+  onProgress?.(0.04); // 4% - playback confirmed
 
-  // Unmute after play succeeds — captureStream() won't output audio tracks
-  // from a muted element. We needed muted=true for autoplay policy, but now
-  // that playback is confirmed, unmute so audio tracks are captured.
+  // Unmute after play succeeds for audio capture
   video.muted = false;
   video.volume = 0; // Keep silent for the user but unmuted for the stream
 
   // ── STEP 2: Capture audio from the video element ─────────────────
-  // Use captureStream() on the video element to get audio tracks.
-  // This works on both iOS and desktop, unlike createMediaElementSource
-  // which breaks playback on iOS Safari.
   let hasAudio = false;
   let audioTracks: MediaStreamTrack[] = [];
 
   try {
-    // captureStream() captures both video and audio from the element
     const videoStream = (video as any).captureStream?.() || (video as any).mozCaptureStream?.();
     if (videoStream) {
       audioTracks = videoStream.getAudioTracks();
@@ -224,34 +220,50 @@ export async function compressVideo(
     };
   });
 
-  // Draw loop: continuously draw video frames to canvas
+  // ── STEP 4: Frame draw loop using requestVideoFrameCallback ──────
+  // requestVideoFrameCallback fires exactly when a new video frame is
+  // decoded — it won't be throttled by iOS Safari like setTimeout.
+  // Falls back to requestAnimationFrame which is also more reliable than setTimeout.
   let animationRunning = true;
-  const drawIntervalMs = 1000 / fps;
+  let frameCount = 0;
 
-  function drawLoop() {
+  const supportsRVFC = "requestVideoFrameCallback" in video;
+  console.log("[Compressor] Using", supportsRVFC ? "requestVideoFrameCallback" : "requestAnimationFrame");
+
+  function drawFrame() {
     if (!animationRunning) return;
     ctx.drawImage(video, 0, 0, outWidth, outHeight);
-    setTimeout(drawLoop, drawIntervalMs);
+    frameCount++;
+
+    if (supportsRVFC) {
+      (video as any).requestVideoFrameCallback(drawFrame);
+    } else {
+      requestAnimationFrame(drawFrame);
+    }
   }
 
   // Start recording + draw loop
-  recorder.start(500);
-  drawLoop();
+  recorder.start(1000); // Request data every 1s for smoother progress
+  if (supportsRVFC) {
+    (video as any).requestVideoFrameCallback(drawFrame);
+  } else {
+    requestAnimationFrame(drawFrame);
+  }
 
   // Report 5% to show recording has started
   onProgress?.(0.05);
 
-  // Progress reporting — use both setInterval and timeupdate for reliability
-  // iOS Safari doesn't always fire timeupdate for offscreen videos
+  // Progress reporting — use setInterval which is reliable for tracking
+  // even if the draw loop uses different timing
   const progressInterval = setInterval(() => {
     if (onProgress && duration > 0) {
-      // Map progress: 5% is start, 95% is end of playback
       const rawProgress = video.currentTime / duration;
       const mappedProgress = 0.05 + rawProgress * 0.90;
       onProgress(Math.min(mappedProgress, 0.95));
     }
-  }, 200);
-  // Also listen to timeupdate as a backup
+  }, 500);
+
+  // Also listen to timeupdate as a backup progress reporter
   const handleTimeUpdate = () => {
     if (onProgress && duration > 0) {
       const rawProgress = video.currentTime / duration;
@@ -263,22 +275,39 @@ export async function compressVideo(
 
   // Wait for video to finish playing
   await new Promise<void>((resolve) => {
-    video.onended = () => resolve();
+    let resolved = false;
+    const finish = () => { if (!resolved) { resolved = true; resolve(); } };
+
+    video.onended = finish;
     video.onpause = () => {
-      if (video.currentTime >= duration - 0.1) resolve();
+      if (video.currentTime >= duration - 0.3) finish();
     };
-    // Safety timeout
-    setTimeout(() => resolve(), (duration + 3) * 1000);
+
+    // Also poll — some browsers don't fire 'ended' reliably for blob URLs
+    const pollInterval = setInterval(() => {
+      if (video.currentTime >= duration - 0.1 || video.ended) {
+        clearInterval(pollInterval);
+        finish();
+      }
+    }, 500);
+
+    // Safety timeout: video duration + 10s buffer
+    setTimeout(() => {
+      clearInterval(pollInterval);
+      console.warn("[Compressor] Safety timeout reached at", video.currentTime, "/", duration);
+      finish();
+    }, (duration + 10) * 1000);
   });
 
   // Stop everything
   animationRunning = false;
   clearInterval(progressInterval);
   video.removeEventListener("timeupdate", handleTimeUpdate);
+  console.log("[Compressor] Recording complete. Frames drawn:", frameCount, "Final time:", video.currentTime);
 
   // Draw one last frame
   ctx.drawImage(video, 0, 0, outWidth, outHeight);
-  await sleep(100);
+  await sleep(200);
 
   // Stop recording and wait for blob
   recorder.stop();

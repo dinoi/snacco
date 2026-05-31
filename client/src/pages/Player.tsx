@@ -161,12 +161,12 @@ export default function Player() {
       onClick={resetHideTimer}
     >
       {/* Video */}
-      <div className="relative flex-1 flex flex-col">
+      <div className="relative flex-1 flex flex-col min-h-0" style={{ minHeight: '60dvh' }}>
         <video
           ref={videoRef}
           src={tutorial?.tutorialVideoUrl}
           poster={tutorial?.thumbnailUrl || undefined}
-          className="w-full h-full object-contain"
+          className="w-full flex-1 object-contain min-h-0"
           playsInline
           preload="auto"
           onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}

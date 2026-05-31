@@ -207,7 +207,7 @@
 
 - [x] Feed videos stuck on first frame (not playing) - simplified play logic
 - [x] Full tutorial video is black and does not play in Player - removed autoPlay, user taps play
-- [ ] Chapter marker first frame shows demo video frame instead of tutorial first frame (deferred)
+- [x] Chapter marker first frame shows demo video frame instead of tutorial first frame (fixed in v1.69)
 
 ## v1.63 - Claude Review Fixes
 
@@ -250,3 +250,15 @@
 - [x] Ensure video compressor is properly applied to all uploads (98MB files getting through)
 - [x] Add poster thumbnail to video elements for instant visual feedback while buffering
 - [x] Lower compression bitrate for shorter clips to target 5-15MB output
+
+## v1.69 - UI Polish & Loading Improvements
+- [x] Fix chapter tagging screen: first frame uses demo thumbnail, should use tutorial video first frame
+- [x] Add up/down arrow keyboard navigation to swipe between videos on desktop feed
+- [x] Purchase/unlock screen: replace video loop with still thumbnail image for faster loading
+- [x] Fix Player layout: controls bunched up at top while video loads (should be vertically centered)
+
+## v1.70 - Critical Compression & UX Bugs
+- [x] CRITICAL: Video compression only captures first frame for long videos (2+ min) - rewrote with requestVideoFrameCallback
+- [x] Loading spinner shows broken image "?" icon - fixed by registering storageProxy route + presigned thumbnail URLs
+- [x] Compression progress stalls at 2% for long videos - improved progress UI with time estimate messaging
+- [x] Chapter marking video won't play for longer compressed videos - added error fallback to server URL

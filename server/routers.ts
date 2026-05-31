@@ -41,9 +41,9 @@ async function resolveVideoUrl<T extends { demoVideoUrl: string; demoVideoKey: s
   const tutorialUrl = tutorial.tutorialVideoKey
     ? await storage.storageGetSignedUrl(tutorial.tutorialVideoKey, EXPIRY)
     : tutorial.tutorialVideoUrl;
-  // Resolve thumbnail: use storage proxy URL if key exists
+  // Resolve thumbnail: use presigned URL if key exists (same as videos)
   const thumbUrl = tutorial.thumbnailKey
-    ? `/manus-storage/${tutorial.thumbnailKey}`
+    ? await storage.storageGetSignedUrl(tutorial.thumbnailKey, EXPIRY)
     : tutorial.thumbnailUrl ?? null;
   return {
     ...tutorial,

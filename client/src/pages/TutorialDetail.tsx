@@ -67,17 +67,16 @@ export default function TutorialDetail() {
     <div className="min-h-dvh bg-black">
       {/* Hero section — fills viewport */}
       <div className="relative h-dvh w-full">
-        {/* Background: simple muted autoplay video — same URL as Feed for HTTP cache hit */}
-        <video
-          src={tutorial.demoVideoUrl}
-          poster={tutorial.thumbnailUrl || undefined}
-          className="absolute inset-0 w-full h-full object-cover"
-          muted
-          loop
-          playsInline
-          autoPlay
-          preload="auto"
-        />
+        {/* Background: still thumbnail for fast loading */}
+        {tutorial.thumbnailUrl ? (
+          <img
+            src={tutorial.thumbnailUrl}
+            alt={tutorial.title}
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        ) : (
+          <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-black via-zinc-900 to-black" />
+        )}
 
         {/* Top gradient */}
         <div className="absolute top-0 left-0 right-0 h-24 bg-gradient-to-b from-black/70 to-transparent z-10" />
