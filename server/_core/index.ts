@@ -141,6 +141,75 @@ async function startServer() {
     res.json(diag);
   });
 
+  // ── Diagnostic: test streaming a small range from S3 ──
+  app.get("/api/debug/stream", async (_req: Request, res: Response) => {
+    const t0 = Date.now();
+    const diag: Record<string, any> = {};
+    try {
+      const client = getS3Client();
+      const testKey = "videos/1/demo/1780191267504_jacket_08057125.mp4";
+      const bucket = ENV.railwayStorageBucket;
+
+      // Test 1: GetObject with small range
+      const t1 = Date.now();
+      const s3Resp = await client.send(
+        new GetObjectCommand({ Bucket: bucket, Key: testKey, Range: "bytes=0-1023" })
+      );
+      diag.getObjectMs = Date.now() - t1;
+      diag.contentLength = s3Resp.ContentLength;
+      diag.contentRange = s3Resp.ContentRange;
+      diag.bodyType = s3Resp.Body?.constructor?.name || typeof s3Resp.Body;
+      diag.hasTransformToWebStream = typeof (s3Resp.Body as any)?.transformToWebStream === "function";
+      diag.hasTransformToByteArray = typeof (s3Resp.Body as any)?.transformToByteArray === "function";
+      diag.instanceOfReadable = s3Resp.Body instanceof Readable;
+
+      // Test 2: Try transformToByteArray (known to work but buffers)
+      const t2 = Date.now();
+      const bytes = await (s3Resp.Body as any).transformToByteArray();
+      diag.byteArrayMs = Date.now() - t2;
+      diag.bytesReceived = bytes.length;
+
+      // Test 3: Try transformToWebStream on a fresh request
+      const t3 = Date.now();
+      const s3Resp2 = await client.send(
+        new GetObjectCommand({ Bucket: bucket, Key: testKey, Range: "bytes=0-1023" })
+      );
+      diag.getObject2Ms = Date.now() - t3;
+
+      const t4 = Date.now();
+      try {
+        const webStream = (s3Resp2.Body as any).transformToWebStream();
+        diag.webStreamCreated = true;
+        const nodeStream = Readable.fromWeb(webStream as any);
+        diag.nodeStreamCreated = true;
+
+        // Collect bytes from the node stream
+        const chunks: Buffer[] = [];
+        await new Promise<void>((resolve, reject) => {
+          nodeStream.on("data", (chunk: Buffer) => chunks.push(chunk));
+          nodeStream.on("end", resolve);
+          nodeStream.on("error", reject);
+          setTimeout(() => reject(new Error("Stream read timed out after 10s")), 10000);
+        });
+        diag.streamBytes = Buffer.concat(chunks).length;
+        diag.streamMs = Date.now() - t4;
+        diag.streamSuccess = true;
+      } catch (streamErr: any) {
+        diag.streamError = streamErr?.message;
+        diag.streamMs = Date.now() - t4;
+        diag.streamSuccess = false;
+      }
+
+      diag.success = true;
+    } catch (err: any) {
+      diag.error = err?.message;
+      diag.success = false;
+    }
+    diag.totalMs = Date.now() - t0;
+    console.log("[S3 Stream Diag]", JSON.stringify(diag));
+    res.json(diag);
+  });
+
   app.get("/api/video/:key(*)", async (req: Request, res: Response) => {
     const key = req.params.key;
     if (!key) return res.status(400).json({ error: "Missing key" });
