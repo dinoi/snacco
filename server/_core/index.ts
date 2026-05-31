@@ -210,6 +210,53 @@ async function startServer() {
     res.json(diag);
   });
 
+  // ── Diagnostic: pipe S3 bytes to response (minimal video proxy reproduction) ──
+  app.get("/api/debug/pipe", async (req: Request, res: Response) => {
+    const t0 = Date.now();
+    try {
+      const client = getS3Client();
+      const testKey = "videos/1/demo/1780191267504_jacket_08057125.mp4";
+      const bucket = ENV.railwayStorageBucket;
+      const rangeHeader = req.headers.range || "bytes=0-65535";
+
+      console.log(`[PipeDiag] Starting, range=${rangeHeader}`);
+
+      const s3Resp = await client.send(
+        new GetObjectCommand({ Bucket: bucket, Key: testKey, Range: rangeHeader })
+      );
+      console.log(`[PipeDiag] GetObject done in ${Date.now() - t0}ms, bodyType=${s3Resp.Body?.constructor?.name}`);
+
+      res.status(206);
+      res.set({
+        "Content-Type": "video/mp4",
+        "Content-Length": String(s3Resp.ContentLength ?? 0),
+        "Content-Range": s3Resp.ContentRange ?? "",
+        "Accept-Ranges": "bytes",
+      });
+
+      // Pipe directly — same as the video proxy
+      const body = s3Resp.Body as any;
+      if (body instanceof Readable) {
+        console.log(`[PipeDiag] Using body.pipe(res) — body is Readable`);
+        body.pipe(res);
+      } else if (typeof body.transformToWebStream === "function") {
+        console.log(`[PipeDiag] Using Readable.fromWeb(transformToWebStream()).pipe(res)`);
+        const nodeStream = Readable.fromWeb(body.transformToWebStream() as any);
+        nodeStream.pipe(res);
+      } else {
+        console.log(`[PipeDiag] Fallback to transformToByteArray`);
+        const bytes = await body.transformToByteArray();
+        res.end(Buffer.from(bytes));
+      }
+
+      res.on("finish", () => console.log(`[PipeDiag] Response finished in ${Date.now() - t0}ms`));
+      res.on("close", () => console.log(`[PipeDiag] Response closed in ${Date.now() - t0}ms`));
+    } catch (err: any) {
+      console.error(`[PipeDiag] Error: ${err?.message}`);
+      if (!res.headersSent) res.status(500).json({ error: err?.message });
+    }
+  });
+
   app.get("/api/video/:key(*)", async (req: Request, res: Response) => {
     const key = req.params.key;
     if (!key) return res.status(400).json({ error: "Missing key" });
