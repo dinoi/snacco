@@ -43,6 +43,7 @@ function FeedCard({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isVideoLoading, setIsVideoLoading] = useState(true);
+  const hasPlayedOnce = useRef(false);
 
 
 
@@ -68,21 +69,37 @@ function FeedCard({
     }
   }, [isActive]);
 
-  // Track video loading state
+  // Track video loading state — only show spinner on initial load,
+  // NOT during mid-playback buffering (which causes flashing on desktop
+  // and permanent spinner on mobile)
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    const handleCanPlay = () => setIsVideoLoading(false);
-    const handleWaiting = () => setIsVideoLoading(true);
-    const handlePlaying = () => setIsVideoLoading(false);
+    const handleCanPlay = () => {
+      setIsVideoLoading(false);
+    };
+    const handlePlaying = () => {
+      hasPlayedOnce.current = true;
+      setIsVideoLoading(false);
+    };
+    // Only show loading spinner if video hasn't played yet (initial load)
+    // Once it's played once, don't re-show the spinner during buffering
+    const handleWaiting = () => {
+      if (!hasPlayedOnce.current) {
+        setIsVideoLoading(true);
+      }
+    };
 
     video.addEventListener("canplay", handleCanPlay);
     video.addEventListener("waiting", handleWaiting);
     video.addEventListener("playing", handlePlaying);
 
     // If video is already ready
-    if (video.readyState >= 3) setIsVideoLoading(false);
+    if (video.readyState >= 3) {
+      hasPlayedOnce.current = true;
+      setIsVideoLoading(false);
+    }
 
     return () => {
       video.removeEventListener("canplay", handleCanPlay);
