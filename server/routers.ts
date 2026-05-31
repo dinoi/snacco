@@ -401,6 +401,21 @@ export const appRouter = router({
         if (!tutorial) throw new TRPCError({ code: "NOT_FOUND" });
         if (tutorial.creatorId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "You can only delete your own tutorials" });
 
+        // Delete S3 files first
+        if (tutorial.demoVideoKey) {
+          // Extract the actual S3 key from the URL if it's a proxy URL
+          const demoKey = tutorial.demoVideoKey.replace(/^\/api\/video\//, "");
+          await storage.storageDelete(demoKey);
+        }
+        if (tutorial.tutorialVideoKey) {
+          const tutKey = tutorial.tutorialVideoKey.replace(/^\/api\/video\//, "");
+          await storage.storageDelete(tutKey);
+        }
+        if (tutorial.thumbnailKey) {
+          const thumbKey = tutorial.thumbnailKey.replace(/^\/manus-storage\//, "");
+          await storage.storageDelete(thumbKey);
+        }
+
         // Delete chapters first
         await db.deleteChaptersByTutorialId(input.id);
         

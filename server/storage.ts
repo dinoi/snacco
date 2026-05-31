@@ -5,6 +5,7 @@ import {
   S3Client,
   PutObjectCommand,
   GetObjectCommand,
+  DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { ENV } from "./_core/env";
@@ -115,4 +116,28 @@ export async function storageGetSignedUrl(
   });
 
   return getSignedUrl(s3, command, { expiresIn });
+}
+
+/**
+ * Delete a file from Railway S3 storage.
+ */
+export async function storageDelete(relKey: string): Promise<void> {
+  if (!relKey) return;
+  
+  try {
+    const s3 = getS3Client();
+    const bucket = ENV.railwayStorageBucket;
+    const key = normalizeKey(relKey);
+
+    await s3.send(
+      new DeleteObjectCommand({
+        Bucket: bucket,
+        Key: key,
+      })
+    );
+    console.log(`[Storage] Deleted file: ${key}`);
+  } catch (err: any) {
+    console.error(`[Storage] Failed to delete file ${relKey}:`, err?.message);
+    // Don't throw, just log - we don't want to block DB deletion if S3 fails
+  }
 }
