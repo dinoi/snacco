@@ -135,12 +135,7 @@ function FeedCard({
     <div
       className="absolute inset-0 w-full h-full"
     >
-      {/* Loading skeleton — shows while video is buffering */}
-      {isVideoLoading && isActive && (
-        <VideoLoadingSkeleton thumbnailUrl={tutorial.thumbnailUrl} />
-      )}
-
-      {/* Video — preload adjacent slides, autoplay active one */}
+      {/* Video — always rendered, never conditionally hidden */}
       {/* eslint-disable-next-line react/no-unknown-property */}
       <video
         ref={videoRef}
@@ -149,12 +144,21 @@ function FeedCard({
         muted
         loop
         playsInline
+        // @ts-ignore — webkit-playsinline needed for older iOS
+        webkit-playsinline="true"
         preload={isActive || preload ? "auto" : "metadata"}
         onError={(e) => {
           const vid = e.currentTarget;
           console.error("[Feed] Video error:", vid.src, vid.error?.message);
         }}
       />
+
+      {/* Loading skeleton — overlays video with pointer-events-none so it doesn't block loading */}
+      {isVideoLoading && isActive && (
+        <div className="pointer-events-none">
+          <VideoLoadingSkeleton thumbnailUrl={tutorial.thumbnailUrl} />
+        </div>
+      )}
 
 
 
