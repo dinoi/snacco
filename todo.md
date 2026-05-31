@@ -202,3 +202,9 @@
 ## v1.59 - Mobile Video Fix
 
 - [x] Feed videos show on desktop but not on mobile
+
+## v1.60 - Video Playback Fixes
+
+- [x] Feed videos stuck on first frame (not playing) - simplified play logic
+- [x] Full tutorial video is black and does not play in Player - removed autoPlay, user taps play
+- [ ] Chapter marker first frame shows demo video frame instead of tutorial first frame (deferred)

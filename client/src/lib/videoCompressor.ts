@@ -156,30 +156,35 @@ export async function compressVideo(
   });
   console.log("[Compressor] Playback confirmed, currentTime:", video.currentTime);
 
-  // ── STEP 2: Try to set up audio capture (non-blocking) ───────────
-  // On iOS Safari, createMediaElementSource can break playback,
-  // so we only attempt it on browsers where it's known to work.
-  let audioCtx: AudioContext | null = null;
-  let audioDest: MediaStreamAudioDestinationNode | null = null;
-  let hasAudio = false;
+  // Unmute after play succeeds — captureStream() won't output audio tracks
+  // from a muted element. We needed muted=true for autoplay policy, but now
+  // that playback is confirmed, unmute so audio tracks are captured.
+  video.muted = false;
+  video.volume = 0; // Keep silent for the user but unmuted for the stream
 
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-  if (!isIOS) {
-    try {
-      audioCtx = new AudioContext();
-      if (audioCtx.state === "suspended") await audioCtx.resume();
-      const audioSource = audioCtx.createMediaElementSource(video);
-      audioDest = audioCtx.createMediaStreamDestination();
-      audioSource.connect(audioDest);
-      hasAudio = true;
-      console.log("[Compressor] Audio capture active");
-    } catch (e) {
-      console.warn("[Compressor] Audio capture failed, video-only output:", e);
-      if (audioCtx) { try { audioCtx.close(); } catch {} }
-      audioCtx = null;
+  // ── STEP 2: Capture audio from the video element ─────────────────
+  // Use captureStream() on the video element to get audio tracks.
+  // This works on both iOS and desktop, unlike createMediaElementSource
+  // which breaks playback on iOS Safari.
+  let hasAudio = false;
+  let audioTracks: MediaStreamTrack[] = [];
+
+  try {
+    // captureStream() captures both video and audio from the element
+    const videoStream = (video as any).captureStream?.() || (video as any).mozCaptureStream?.();
+    if (videoStream) {
+      audioTracks = videoStream.getAudioTracks();
+      if (audioTracks.length > 0) {
+        hasAudio = true;
+        console.log("[Compressor] Audio capture active via captureStream (", audioTracks.length, "tracks)");
+      } else {
+        console.log("[Compressor] No audio tracks found in video");
+      }
+    } else {
+      console.log("[Compressor] captureStream not supported");
     }
-  } else {
-    console.log("[Compressor] iOS detected, skipping audio capture");
+  } catch (e) {
+    console.warn("[Compressor] Audio capture failed:", e);
   }
 
   // ── STEP 3: Combine streams and start recording ──────────────────
@@ -187,8 +192,8 @@ export async function compressVideo(
   for (const track of canvasStream.getVideoTracks()) {
     combinedStream.addTrack(track);
   }
-  if (hasAudio && audioDest) {
-    for (const track of audioDest.stream.getAudioTracks()) {
+  if (hasAudio) {
+    for (const track of audioTracks) {
       combinedStream.addTrack(track);
     }
   }
@@ -259,7 +264,6 @@ export async function compressVideo(
   onProgress?.(1);
 
   // Cleanup
-  if (audioCtx) { try { audioCtx.close(); } catch {} }
   URL.revokeObjectURL(videoUrl);
   video.pause();
   video.remove();

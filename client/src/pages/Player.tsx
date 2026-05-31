@@ -166,10 +166,8 @@ export default function Player() {
           ref={videoRef}
           src={tutorial?.tutorialVideoUrl}
           className="w-full h-full object-contain"
-          poster={(tutorial as any)?.thumbnailUrl || undefined}
           playsInline
           preload="auto"
-          autoPlay
           onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
           onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
           onCanPlay={() => setIsBuffering(false)}

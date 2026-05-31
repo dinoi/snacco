@@ -1,19 +1,13 @@
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
-import { Coins, ChevronRight, Volume2, VolumeX } from "lucide-react";
+import { Coins, ChevronRight } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VersionBadge } from "@/components/VersionBadge";
 import { useRef, useEffect, useState, useCallback } from "react";
 
-// ── Global mute state shared across all feed cards ──────────────────
-let globalMuted = true;
-const muteListeners = new Set<(muted: boolean) => void>();
-function setGlobalMuted(muted: boolean) {
-  globalMuted = muted;
-  muteListeners.forEach((fn) => fn(muted));
-}
+
 
 // ── Video loading skeleton ──────────────────────────────────────────
 function VideoLoadingSkeleton({ thumbnailUrl }: { thumbnailUrl?: string }) {
@@ -48,46 +42,18 @@ function FeedCard({
   preload: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [isMuted, setIsMuted] = useState(globalMuted);
   const [isVideoLoading, setIsVideoLoading] = useState(true);
 
-  // Subscribe to global mute state
-  useEffect(() => {
-    const handler = (muted: boolean) => {
-      setIsMuted(muted);
-      if (videoRef.current) videoRef.current.muted = muted;
-    };
-    muteListeners.add(handler);
-    return () => { muteListeners.delete(handler); };
-  }, []);
 
-  // Play/pause based on active state
+
+  // Play/pause based on active state — keep it simple like v1.48
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
     if (isActive) {
-      // MUST set muted=true before play() for mobile autoplay policy.
-      // iOS/Android will reject play() on unmuted video without user gesture.
-      video.muted = true;
       if (video.currentTime > 0.5) video.currentTime = 0;
-      const p = video.play();
-      if (p) {
-        p.then(() => {
-          // After play succeeds, apply user's mute preference
-          video.muted = globalMuted;
-        }).catch(() => {
-          // Retry with a delay — mobile browsers sometimes need a moment
-          setTimeout(() => {
-            if (videoRef.current && isActive) {
-              videoRef.current.muted = true;
-              videoRef.current.play().then(() => {
-                if (videoRef.current) videoRef.current.muted = globalMuted;
-              }).catch(() => {});
-            }
-          }, 500);
-        });
-      }
+      video.play().catch(() => {});
     } else {
       video.pause();
     }
@@ -137,11 +103,7 @@ function FeedCard({
     };
   }, [isActive]);
 
-  const toggleMute = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    setGlobalMuted(!globalMuted);
-  }, []);
+
 
   return (
     <div
@@ -159,39 +121,17 @@ function FeedCard({
         ref={videoRef}
         src={tutorial.demoVideoUrl}
         className="absolute inset-0 w-full h-full object-cover"
-        poster={tutorial.thumbnailUrl || undefined}
-        muted={isMuted}
+        muted
         loop
         playsInline
-        autoPlay={isActive}
-        preload={isActive || preload ? "auto" : "none"}
-        {...({ "webkit-playsinline": "true" } as any)}
+        preload={isActive || preload ? "auto" : "metadata"}
         onError={(e) => {
           const vid = e.currentTarget;
           console.error("[Feed] Video error:", vid.src, vid.error?.message);
-          // Retry once on error (mobile networks can be flaky)
-          if (vid.src && isActive) {
-            setTimeout(() => {
-              vid.load();
-              vid.play().catch(() => {});
-            }, 1000);
-          }
         }}
       />
 
-      {/* Mute toggle */}
-      <button
-        onClick={toggleMute}
-        onTouchEnd={(e) => { e.stopPropagation(); toggleMute(e); }}
-        className="absolute top-16 right-4 z-30 w-10 h-10 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center border border-white/20 active:scale-[0.92] transition-transform"
-        aria-label={isMuted ? "Unmute" : "Mute"}
-      >
-        {isMuted ? (
-          <VolumeX size={18} className="text-white/80" />
-        ) : (
-          <Volume2 size={18} className="text-white" />
-        )}
-      </button>
+
 
       {/* Bottom gradient */}
       <div className="absolute bottom-0 left-0 right-0 h-72 bg-gradient-to-t from-black/95 via-black/60 to-transparent z-10" />
