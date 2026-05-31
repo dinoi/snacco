@@ -86,6 +86,27 @@ async function startServer() {
     }
   }
 
+  // AWS SDK v3 Body is a web ReadableStream, NOT a Node.js Readable.
+  // `instanceof Readable` is always false. We must convert via
+  // Readable.fromWeb() to get a proper Node stream we can .pipe().
+  // Without this, transformToByteArray() buffers the ENTIRE video in RAM
+  // before sending a single byte — causing timeouts and OOM on Railway.
+  function pipeS3Body(body: any, res: Response) {
+    if (!body) {
+      if (!res.headersSent) res.status(500).end();
+      return;
+    }
+    const nodeStream = typeof body.transformToWebStream === "function"
+      ? Readable.fromWeb(body.transformToWebStream() as any)
+      : (body instanceof Readable ? body : Readable.from(body));
+    nodeStream.on("error", (err) => {
+      console.error("[VideoProxy] Stream error:", err?.message);
+      if (!res.headersSent) res.status(500).end();
+      else res.destroy();
+    });
+    nodeStream.pipe(res);
+  }
+
   app.get("/api/video/:key(*)", async (req: Request, res: Response) => {
     const key = req.params.key;
     if (!key) return res.status(400).json({ error: "Missing key" });
@@ -141,14 +162,7 @@ async function startServer() {
           "Cache-Control": "public, max-age=86400, immutable",
         });
 
-        if (s3Resp.Body instanceof Readable) {
-          s3Resp.Body.pipe(res);
-        } else if (s3Resp.Body && typeof (s3Resp.Body as any).transformToByteArray === "function") {
-          const bytes = await (s3Resp.Body as any).transformToByteArray();
-          res.end(Buffer.from(bytes));
-        } else {
-          res.status(500).json({ error: "Unexpected S3 response body type" });
-        }
+        pipeS3Body(s3Resp.Body, res);
         return;
       }
 
@@ -172,14 +186,7 @@ async function startServer() {
         "Cache-Control": "public, max-age=86400, immutable",
       });
 
-      if (s3Resp.Body instanceof Readable) {
-        s3Resp.Body.pipe(res);
-      } else if (s3Resp.Body && typeof (s3Resp.Body as any).transformToByteArray === "function") {
-        const bytes = await (s3Resp.Body as any).transformToByteArray();
-        res.end(Buffer.from(bytes));
-      } else {
-        res.status(500).json({ error: "Unexpected S3 response body type" });
-      }
+      pipeS3Body(s3Resp.Body, res);
     } catch (err: any) {
       console.error("[VideoProxy] Error streaming:", key, err?.message);
       if (!res.headersSent) {

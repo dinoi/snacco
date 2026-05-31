@@ -226,6 +226,6 @@
 
 ## v1.65 - Fix Video Playback (Desktop Buffering + Mobile Black Screen)
 
-- [ ] Desktop: video plays in short bursts then stalls with spinner (constant buffering through presigned URL redirect)
-- [ ] Mobile: black screen with infinite spinner (presigned URL 302 redirect not working on mobile Safari)
-- [ ] Root cause: presigned URL redirect (302) breaks browser video Range request handling — need streaming proxy with forcePathStyle fix
+- [x] Desktop: video plays in short bursts then stalls with spinner (constant buffering through presigned URL redirect)
+- [x] Mobile: black screen with infinite spinner (presigned URL 302 redirect not working on mobile Safari)
+- [x] Root cause: presigned URL redirect (302) breaks browser video Range request handling — reverted to streaming proxy with all optimisations
