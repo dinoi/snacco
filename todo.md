@@ -208,3 +208,9 @@
 - [x] Feed videos stuck on first frame (not playing) - simplified play logic
 - [x] Full tutorial video is black and does not play in Player - removed autoPlay, user taps play
 - [ ] Chapter marker first frame shows demo video frame instead of tutorial first frame (deferred)
+
+## v1.63 - Claude Review Fixes
+
+- [x] Fix wheel handler re-registration loop (goToSlideRef + empty deps)
+- [x] Fix video stuck on frame 1 (readyState >= 2 check before play, canplay fallback)
+- [x] Replace TutorialDetail video with static thumbnail (simplified to muted autoplay video, no loading skeleton)

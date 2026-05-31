@@ -1,6 +1,6 @@
 import { trpc } from "@/lib/trpc";
 import { useParams, useLocation } from "wouter";
-import { ArrowLeft, Coins, Play, Lock, CheckCircle, Loader2, ListOrdered, Volume2, VolumeX } from "lucide-react";
+import { ArrowLeft, Coins, Play, Loader2, ListOrdered } from "lucide-react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 import { toast } from "sonner";
@@ -8,26 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatTime } from "@/lib/utils";
 import { VersionBadge } from "@/components/VersionBadge";
-import { useRef, useState, useCallback, useEffect } from "react";
-
-// ── Video loading skeleton ──────────────────────────────────────────
-function VideoLoadingSkeleton({ thumbnailUrl }: { thumbnailUrl?: string }) {
-  return (
-    <div className="absolute inset-0 w-full h-full bg-black z-5">
-      {thumbnailUrl ? (
-        <img
-          src={thumbnailUrl}
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover blur-md scale-105 opacity-60"
-        />
-      ) : null}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60" />
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className="w-12 h-12 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-      </div>
-    </div>
-  );
-}
 
 export default function TutorialDetail() {
   const { id } = useParams<{ id: string }>();
@@ -35,9 +15,6 @@ export default function TutorialDetail() {
   const [, navigate] = useLocation();
   const { isAuthenticated } = useAuth();
   const utils = trpc.useUtils();
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [isMuted, setIsMuted] = useState(true);
-  const [isVideoLoading, setIsVideoLoading] = useState(true);
 
   const { data: tutorial, isLoading } = trpc.tutorials.get.useQuery({ id: tutorialId });
   const { data: chapters } = trpc.tutorials.getChapters.useQuery({ tutorialId });
@@ -67,37 +44,6 @@ export default function TutorialDetail() {
     },
   });
 
-  const toggleMute = useCallback(() => {
-    const next = !isMuted;
-    setIsMuted(next);
-    if (videoRef.current) {
-      videoRef.current.muted = next;
-    }
-  }, [isMuted]);
-
-  // Track video loading state
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    const handleCanPlay = () => setIsVideoLoading(false);
-    const handleWaiting = () => setIsVideoLoading(true);
-    const handlePlaying = () => setIsVideoLoading(false);
-
-    video.addEventListener("canplay", handleCanPlay);
-    video.addEventListener("waiting", handleWaiting);
-    video.addEventListener("playing", handlePlaying);
-
-    // If video is already ready (served from browser cache)
-    if (video.readyState >= 3) setIsVideoLoading(false);
-
-    return () => {
-      video.removeEventListener("canplay", handleCanPlay);
-      video.removeEventListener("waiting", handleWaiting);
-      video.removeEventListener("playing", handlePlaying);
-    };
-  }, [tutorial?.demoVideoUrl]);
-
   if (isLoading) {
     return (
       <div className="min-h-dvh bg-black flex items-center justify-center">
@@ -119,25 +65,17 @@ export default function TutorialDetail() {
 
   return (
     <div className="min-h-dvh bg-black">
-      {/* Video section — fills viewport */}
+      {/* Hero section — fills viewport */}
       <div className="relative h-dvh w-full">
-        {/* Loading skeleton — shows while video is buffering */}
-        {isVideoLoading && (
-          <VideoLoadingSkeleton thumbnailUrl={(tutorial as any).thumbnailUrl} />
-        )}
-
-        {/* Full-screen video background — same URL as Feed for browser cache hit */}
+        {/* Background: simple muted autoplay video — same URL as Feed for HTTP cache hit */}
         <video
-          ref={videoRef}
           src={tutorial.demoVideoUrl}
           className="absolute inset-0 w-full h-full object-cover"
-          poster={(tutorial as any).thumbnailUrl || undefined}
-          muted={isMuted}
+          muted
           loop
           playsInline
           autoPlay
           preload="auto"
-          onError={(e) => console.error('[Video] Error loading demo:', e)}
         />
 
         {/* Top gradient */}
@@ -154,19 +92,6 @@ export default function TutorialDetail() {
           </button>
           <VersionBadge />
         </div>
-
-        {/* Mute/unmute toggle — top right, below header */}
-        <button
-          onClick={toggleMute}
-          className="absolute top-16 right-4 z-30 w-10 h-10 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center border border-white/20 active:scale-[0.92] transition-transform"
-          aria-label={isMuted ? "Unmute" : "Mute"}
-        >
-          {isMuted ? (
-            <VolumeX size={18} className="text-white/80" />
-          ) : (
-            <Volume2 size={18} className="text-white" />
-          )}
-        </button>
 
         {/* Bottom gradient for overlay readability */}
         <div className="absolute bottom-0 left-0 right-0 h-[55%] bg-gradient-to-t from-black/95 via-black/60 to-transparent z-10" />

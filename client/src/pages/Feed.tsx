@@ -46,14 +46,23 @@ function FeedCard({
 
 
 
-  // Play/pause based on active state — keep it simple like v1.48
+  // Play/pause based on active state
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
     if (isActive) {
-      if (video.currentTime > 0.5) video.currentTime = 0;
-      video.play().catch(() => {});
+      // Wait for video to be ready before calling play
+      if (video.readyState >= 2) {
+        video.play().catch(() => {});
+      } else {
+        const onReady = () => {
+          video.play().catch(() => {});
+          video.removeEventListener("canplay", onReady);
+        };
+        video.addEventListener("canplay", onReady);
+        return () => video.removeEventListener("canplay", onReady);
+      }
     } else {
       video.pause();
     }
@@ -203,14 +212,17 @@ export default function Feed() {
 
   const goToSlide = useCallback(
     (index: number) => {
-      if (index < 0 || index >= totalSlides || isAnimating) return;
+      if (index < 0 || index >= totalSlidesRef.current || isAnimatingRef.current) return;
       setIsAnimating(true);
       setCurrentIndex(index);
       setTranslateY(0);
       setTimeout(() => setIsAnimating(false), 320);
     },
-    [totalSlides, isAnimating]
+    [] // empty deps — reads from refs
   );
+
+  const goToSlideRef = useRef(goToSlide);
+  goToSlideRef.current = goToSlide;
 
   // Determine whether to snap based on distance OR velocity
   const shouldSnap = useCallback((delta: number, elapsed: number): "next" | "prev" | null => {
@@ -325,25 +337,21 @@ export default function Feed() {
     let wheelCooldown = false;
     const handleWheel = (e: WheelEvent) => {
       if (wheelCooldown || isAnimatingRef.current) return;
-      const threshold = 50;
-      if (Math.abs(e.deltaY) < threshold) return;
+      if (Math.abs(e.deltaY) < 50) return;
 
       const idx = currentIndexRef.current;
       const total = totalSlidesRef.current;
 
-      if (e.deltaY > 0 && idx < total - 1) {
-        goToSlide(idx + 1);
-      } else if (e.deltaY < 0 && idx > 0) {
-        goToSlide(idx - 1);
-      }
+      if (e.deltaY > 0 && idx < total - 1) goToSlideRef.current(idx + 1);
+      else if (e.deltaY < 0 && idx > 0) goToSlideRef.current(idx - 1);
 
       wheelCooldown = true;
-      setTimeout(() => { wheelCooldown = false; }, 400);
+      setTimeout(() => { wheelCooldown = false; }, 300);
     };
 
     window.addEventListener("wheel", handleWheel, { passive: true });
     return () => window.removeEventListener("wheel", handleWheel);
-  }, [goToSlide]);
+  }, []); // empty deps — reads everything through refs
 
   return (
     <div className="h-dvh w-full bg-black overflow-hidden relative">
