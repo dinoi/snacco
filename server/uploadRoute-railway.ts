@@ -95,7 +95,10 @@ export function registerUploadRoute(app: Express) {
         const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
         const key = `videos/${user.id}/${type}/${Date.now()}_${safeName}`;
 
-        const { key: storedKey } = await storage.storagePutStream(key, uploadPath, file.mimetype || "video/mp4");
+        // iOS records as video/quicktime (.mov) — normalize to video/mp4 for browser compatibility
+        const rawMime = file.mimetype || "video/mp4";
+        const safeMime = rawMime === "video/quicktime" ? "video/mp4" : rawMime;
+        const { key: storedKey } = await storage.storagePutStream(key, uploadPath, safeMime);
 
         // Return proxy URL (Railway S3 buckets are private, no public URLs)
         return res.json({ key: storedKey, url: `/api/video/${storedKey}` });

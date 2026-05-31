@@ -108,7 +108,6 @@ function FeedCard({
   return (
     <div
       className="absolute inset-0 w-full h-full"
-      onClick={() => onNavigate(`/tutorial/${tutorial.id}`)}
     >
       {/* Loading skeleton — shows while video is buffering */}
       {isVideoLoading && isActive && (
@@ -193,6 +192,14 @@ export default function Feed() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const totalSlides = tutorials?.length ?? 0;
+
+  // Refs for wheel handler to avoid stale closures
+  const currentIndexRef = useRef(currentIndex);
+  const isAnimatingRef = useRef(isAnimating);
+  currentIndexRef.current = currentIndex;
+  isAnimatingRef.current = isAnimating;
+  const totalSlidesRef = useRef(totalSlides);
+  totalSlidesRef.current = totalSlides;
 
   const goToSlide = useCallback(
     (index: number) => {
@@ -312,6 +319,31 @@ export default function Feed() {
     window.addEventListener("mouseup", handleGlobalUp);
     return () => window.removeEventListener("mouseup", handleGlobalUp);
   }, []);
+
+  // ── Desktop wheel/trackpad scroll ──────────────────────────────────
+  useEffect(() => {
+    let wheelCooldown = false;
+    const handleWheel = (e: WheelEvent) => {
+      if (wheelCooldown || isAnimatingRef.current) return;
+      const threshold = 50;
+      if (Math.abs(e.deltaY) < threshold) return;
+
+      const idx = currentIndexRef.current;
+      const total = totalSlidesRef.current;
+
+      if (e.deltaY > 0 && idx < total - 1) {
+        goToSlide(idx + 1);
+      } else if (e.deltaY < 0 && idx > 0) {
+        goToSlide(idx - 1);
+      }
+
+      wheelCooldown = true;
+      setTimeout(() => { wheelCooldown = false; }, 400);
+    };
+
+    window.addEventListener("wheel", handleWheel, { passive: true });
+    return () => window.removeEventListener("wheel", handleWheel);
+  }, [goToSlide]);
 
   return (
     <div className="h-dvh w-full bg-black overflow-hidden relative">

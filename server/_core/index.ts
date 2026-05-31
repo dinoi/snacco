@@ -134,6 +134,7 @@ async function startServer() {
         res.setHeader("Accept-Ranges", "bytes");
         res.setHeader("Content-Type", contentType);
         res.setHeader("Content-Length", totalSize);
+        res.removeHeader("Vary");
         pipeS3Body(getResp.Body, res);
         return;
       }
@@ -144,6 +145,7 @@ async function startServer() {
       res.setHeader("Cache-Control", "public, max-age=86400, immutable");
       res.setHeader("Accept-Ranges", "bytes");
       res.setHeader("Content-Type", contentType);
+      res.removeHeader("Vary");
 
       if (totalSize === 0) {
         res.status(200);

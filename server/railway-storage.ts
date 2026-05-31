@@ -55,6 +55,7 @@ export async function storagePutStream(
         Key: key,
         Body: fileStream,
         ContentType: contentType,
+        CacheControl: "public, max-age=31536000, immutable",
       });
 
       await client.send(command);
@@ -100,6 +101,7 @@ export async function storagePut(
         Key: key,
         Body: buffer,
         ContentType: contentType,
+        CacheControl: "public, max-age=31536000, immutable",
       });
 
       await client.send(command);
