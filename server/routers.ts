@@ -29,16 +29,17 @@ const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
 });
 
 // ─── Video URL resolver ──────────────────────────────────────────────────
-// Railway S3 buckets are private — no public URLs exist.
-// Return stable /api/video/{key} proxy URLs so the browser can cache them
-// across feed ↔ detail page navigation (same URL = same cache entry).
+// Railway S3 buckets are private — generate presigned URLs so the browser
+// fetches video directly from Tigris CDN (no proxy bottleneck).
+// Presigned URLs expire in 24h, matching the Cache-Control max-age.
 
-function resolveVideoUrl<T extends { demoVideoUrl: string; demoVideoKey: string; tutorialVideoUrl: string; tutorialVideoKey: string; thumbnailUrl?: string | null; thumbnailKey?: string | null }>(tutorial: T): T {
+async function resolveVideoUrl<T extends { demoVideoUrl: string; demoVideoKey: string; tutorialVideoUrl: string; tutorialVideoKey: string; thumbnailUrl?: string | null; thumbnailKey?: string | null }>(tutorial: T): Promise<T> {
+  const EXPIRY = 86400; // 24 hours
   const demoUrl = tutorial.demoVideoKey
-    ? `/api/video/${tutorial.demoVideoKey}`
+    ? await storage.storageGetSignedUrl(tutorial.demoVideoKey, EXPIRY)
     : tutorial.demoVideoUrl;
   const tutorialUrl = tutorial.tutorialVideoKey
-    ? `/api/video/${tutorial.tutorialVideoKey}`
+    ? await storage.storageGetSignedUrl(tutorial.tutorialVideoKey, EXPIRY)
     : tutorial.tutorialVideoUrl;
   // Resolve thumbnail: use storage proxy URL if key exists
   const thumbUrl = tutorial.thumbnailKey
@@ -115,7 +116,7 @@ export const appRouter = router({
     // Public feed
     feed: publicProcedure.query(async () => {
       const tutorials = await db.getPublishedTutorials();
-      return tutorials.map(resolveVideoUrl);
+      return Promise.all(tutorials.map(resolveVideoUrl));
     }),
 
     // Single tutorial detail
@@ -124,7 +125,7 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const tutorial = await db.getTutorialById(input.id);
         if (!tutorial) throw new TRPCError({ code: "NOT_FOUND" });
-        return resolveVideoUrl(tutorial);
+        return await resolveVideoUrl(tutorial);
       }),
 
     // Chapters for a tutorial
@@ -166,13 +167,13 @@ export const appRouter = router({
     // Library: all unlocked tutorials for current user
     library: protectedProcedure.query(async ({ ctx }) => {
       const tutorials = await db.getUnlockedTutorials(ctx.user.id);
-      return tutorials.map(resolveVideoUrl);
+      return Promise.all(tutorials.map(resolveVideoUrl));
     }),
 
     // Creator: get my tutorials
     myTutorials: protectedProcedure.query(async ({ ctx }) => {
       const tutorials = await db.getTutorialsByCreator(ctx.user.id);
-      return tutorials.map(resolveVideoUrl);
+      return Promise.all(tutorials.map(resolveVideoUrl));
     }),
 
     // ── Chunked upload: receive one chunk at a time ──────────────────
@@ -428,7 +429,7 @@ export const appRouter = router({
     // Admin: list all tutorials
     adminList: adminProcedure.query(async () => {
       const tutorials = await db.getAllTutorials();
-      return tutorials.map(resolveVideoUrl);
+      return Promise.all(tutorials.map(resolveVideoUrl));
     }),
 
     // Admin: toggle publish status

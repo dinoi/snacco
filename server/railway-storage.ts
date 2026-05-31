@@ -155,7 +155,7 @@ export async function storageGetSignedUrl(relKey: string, expiresIn: number = 36
     return `/api/storage/${relKey}`;
   }
 
-  // Otherwise try S3
+  // Otherwise try S3 — path-style presigned URLs work on Tigris
   if (ENV.railwayStorageEndpoint && ENV.railwayAccessKeyId && ENV.railwaySecretAccessKey) {
     try {
       const client = getS3Client();

@@ -231,3 +231,16 @@
 - [x] Root cause: presigned URL redirect (302) breaks browser video Range request handling — reverted to streaming proxy with all optimisations
 
 - [x] Implement S3 file deletion when tutorials are deleted
+
+## v1.67 - Direct Presigned URL Video Delivery (CDN bypass)
+
+- [x] Switch from streaming proxy to presigned URLs returned directly in tRPC JSON responses
+- [x] resolveVideoUrl is now async, generates 24h presigned URLs for video keys
+- [x] All call sites updated to use Promise.all(tutorials.map(resolveVideoUrl))
+- [x] Verified: path-style presigned URLs work on Tigris (GET returns 200/206)
+- [x] Verified: Tigris returns Access-Control-Allow-Origin: * (CORS works for browser)
+- [x] Verified: Range requests work (206 Partial Content with Content-Range)
+- [x] Removed debug/diagnostic endpoints (/api/debug/s3, /api/debug/stream, /api/debug/pipe)
+- [x] Cleaned up test scripts (test-s3.mjs, test-presigned-vhost.mjs, etc.)
+- [ ] Video proxy route (/api/video/:key) kept as fallback for edge cases
+- [ ] Push to Railway and verify video playback on desktop and mobile
