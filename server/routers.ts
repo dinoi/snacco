@@ -33,7 +33,7 @@ const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
 // fetches video directly from Tigris CDN (no proxy bottleneck).
 // Presigned URLs expire in 24h, matching the Cache-Control max-age.
 
-async function resolveVideoUrl<T extends { demoVideoUrl: string; demoVideoKey: string; tutorialVideoUrl: string; tutorialVideoKey: string; thumbnailUrl?: string | null; thumbnailKey?: string | null }>(tutorial: T): Promise<T> {
+async function resolveVideoUrl<T extends { demoVideoUrl: string; demoVideoKey: string; tutorialVideoUrl: string; tutorialVideoKey: string; thumbnailUrl?: string | null; thumbnailKey?: string | null; tutorialThumbnailUrl?: string | null; tutorialThumbnailKey?: string | null }>(tutorial: T): Promise<T> {
   const EXPIRY = 86400; // 24 hours
   const demoUrl = tutorial.demoVideoKey
     ? await storage.storageGetSignedUrl(tutorial.demoVideoKey, EXPIRY)
@@ -45,11 +45,16 @@ async function resolveVideoUrl<T extends { demoVideoUrl: string; demoVideoKey: s
   const thumbUrl = tutorial.thumbnailKey
     ? await storage.storageGetSignedUrl(tutorial.thumbnailKey, EXPIRY)
     : tutorial.thumbnailUrl ?? null;
+  // Resolve tutorial thumbnail (first frame of tutorial video)
+  const tutThumbUrl = tutorial.tutorialThumbnailKey
+    ? await storage.storageGetSignedUrl(tutorial.tutorialThumbnailKey, EXPIRY)
+    : tutorial.tutorialThumbnailUrl ?? null;
   return {
     ...tutorial,
     demoVideoUrl: demoUrl,
     tutorialVideoUrl: tutorialUrl,
     thumbnailUrl: thumbUrl,
+    tutorialThumbnailUrl: tutThumbUrl,
   };
 }
 
@@ -321,6 +326,8 @@ export const appRouter = router({
         tutorialVideoKey: z.string(),
         thumbnailUrl: z.string().optional(),
         thumbnailKey: z.string().optional(),
+        tutorialThumbnailUrl: z.string().optional(),
+        tutorialThumbnailKey: z.string().optional(),
         chapters: z.array(z.object({
           label: z.string().min(1),
           timestampSeconds: z.number().int().min(0),
@@ -356,6 +363,8 @@ export const appRouter = router({
         tutorialVideoKey: z.string(),
         thumbnailUrl: z.string().optional(),
         thumbnailKey: z.string().optional(),
+        tutorialThumbnailUrl: z.string().optional(),
+        tutorialThumbnailKey: z.string().optional(),
         chapters: z.array(z.object({
           label: z.string().min(1),
           timestampSeconds: z.number().int().min(0),

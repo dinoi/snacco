@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatTime } from "@/lib/utils";
 import { VersionBadge } from "@/components/VersionBadge";
+import { useEffect } from "react";
 
 export default function TutorialDetail() {
   const { id } = useParams<{ id: string }>();
@@ -44,6 +45,19 @@ export default function TutorialDetail() {
     },
   });
 
+  // Prefetch tutorial video so it starts loading before user navigates to Player
+  const isOwned = unlockStatus?.unlocked ?? false;
+  useEffect(() => {
+    if (!tutorial?.tutorialVideoUrl || !isOwned) return;
+    const link = document.createElement('link');
+    link.rel = 'prefetch';
+    link.as = 'video';
+    link.href = tutorial.tutorialVideoUrl;
+    link.crossOrigin = 'anonymous';
+    document.head.appendChild(link);
+    return () => { document.head.removeChild(link); };
+  }, [tutorial?.tutorialVideoUrl, isOwned]);
+
   if (isLoading) {
     return (
       <div className="min-h-dvh bg-black flex items-center justify-center">
@@ -60,8 +74,7 @@ export default function TutorialDetail() {
     );
   }
 
-  const isOwned = unlockStatus?.unlocked ?? false;
-  const canAfford = (tokenData?.balance ?? 0) >= tutorial.tokenPrice;
+  const canAfford = (tokenData?.balance ?? 0) >= (tutorial?.tokenPrice ?? 0);
 
   return (
     <div className="min-h-dvh bg-black">

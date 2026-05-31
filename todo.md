@@ -262,3 +262,7 @@
 - [x] Loading spinner shows broken image "?" icon - fixed by registering storageProxy route + presigned thumbnail URLs
 - [x] Compression progress stalls at 2% for long videos - improved progress UI with time estimate messaging
 - [x] Chapter marking video won't play for longer compressed videos - added error fallback to server URL
+
+## v1.71 - Player Loading UX
+- [x] Player loading thumbnail should show tutorial video thumbnail, not demo thumbnail
+- [x] Investigate and improve full video load speed - added prefetch on TutorialDetail, moov atom already at start

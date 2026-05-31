@@ -165,7 +165,7 @@ export default function Player() {
         <video
           ref={videoRef}
           src={tutorial?.tutorialVideoUrl}
-          poster={tutorial?.thumbnailUrl || undefined}
+          poster={tutorial?.tutorialThumbnailUrl || tutorial?.thumbnailUrl || undefined}
           className="w-full flex-1 object-contain min-h-0"
           playsInline
           preload="auto"

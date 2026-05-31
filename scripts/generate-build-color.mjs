@@ -16,7 +16,7 @@ const randomColor = colors[Math.floor(Math.random() * colors.length)];
 const buildTimestamp = new Date().toISOString();
 
 // Extract version from git tag or commit message
-let version = 'v1.70'; // Fix compression for long videos, thumbnail proxy, progress UX
+let version = 'v1.71'; // Tutorial thumbnail poster, video prefetch, presigned thumbnail URLs
 try {
   const lastCommitMessage = execSync('git log -1 --pretty=%B', { cwd: path.join(__dirname, '..'), encoding: 'utf-8' }).trim();
   const versionMatch = lastCommitMessage.match(/v(\d+\.\d+(?:\.\d+)?)/);

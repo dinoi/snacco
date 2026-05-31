@@ -39,6 +39,8 @@ export const tutorials = mysqlTable("tutorials", {
   tutorialVideoKey: text("tutorialVideoKey").notNull(),
   thumbnailUrl: text("thumbnailUrl"),
   thumbnailKey: text("thumbnailKey"),
+  tutorialThumbnailUrl: text("tutorialThumbnailUrl"),
+  tutorialThumbnailKey: text("tutorialThumbnailKey"),
   isPublished: boolean("isPublished").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

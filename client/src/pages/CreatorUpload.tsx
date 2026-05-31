@@ -423,6 +423,19 @@ export default function CreatorUpload() {
       }
     }
 
+    // Upload tutorial thumbnail (first frame of full tutorial video)
+    let tutorialThumbnailUrl: string | undefined;
+    let tutorialThumbnailKey: string | undefined;
+    if (tutorialThumbnailDataUrl) {
+      try {
+        const tutThumbResult = await uploadThumbnailMutation.mutateAsync({ imageData: tutorialThumbnailDataUrl });
+        tutorialThumbnailUrl = tutThumbResult.url;
+        tutorialThumbnailKey = tutThumbResult.key;
+      } catch (err) {
+        console.warn("[Publish] Tutorial thumbnail upload failed:", err);
+      }
+    }
+
     publishMutation.mutate({
       title: title.trim(),
       description: description.trim(),
@@ -434,6 +447,8 @@ export default function CreatorUpload() {
       tutorialVideoKey: tutorialVideo.key,
       thumbnailUrl,
       thumbnailKey,
+      tutorialThumbnailUrl,
+      tutorialThumbnailKey,
       chapters: chapters.map((c, idx) => ({ label: c.label, timestampSeconds: Math.round(c.time), sortOrder: idx })),
     });
   };
