@@ -229,3 +229,5 @@
 - [x] Desktop: video plays in short bursts then stalls with spinner (constant buffering through presigned URL redirect)
 - [x] Mobile: black screen with infinite spinner (presigned URL 302 redirect not working on mobile Safari)
 - [x] Root cause: presigned URL redirect (302) breaks browser video Range request handling — reverted to streaming proxy with all optimisations
+
+- [ ] Implement S3 file deletion when tutorials are deleted

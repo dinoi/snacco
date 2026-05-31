@@ -290,11 +290,13 @@ async function startServer() {
 
         const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
         let start = 0;
+        // Ignore the requested end byte and stream the rest of the file.
+        // This prevents the browser from making 15+ sequential 64KB requests
+        // which takes 15+ seconds to buffer enough data to play.
         let end = totalSize - 1;
         if (match) {
           start = parseInt(match[1], 10);
-          end = match[2] ? parseInt(match[2], 10) : totalSize - 1;
-          if (start >= totalSize || end >= totalSize) {
+          if (start >= totalSize) {
             res.status(416).set("Content-Range", `bytes */${totalSize}`).end();
             return;
           }
