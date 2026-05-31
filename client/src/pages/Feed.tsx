@@ -67,9 +67,27 @@ function FeedCard({
     if (!video) return;
 
     if (isActive) {
-      video.muted = globalMuted;
+      // MUST set muted=true before play() for mobile autoplay policy.
+      // iOS/Android will reject play() on unmuted video without user gesture.
+      video.muted = true;
       if (video.currentTime > 0.5) video.currentTime = 0;
-      video.play().catch(() => {});
+      const p = video.play();
+      if (p) {
+        p.then(() => {
+          // After play succeeds, apply user's mute preference
+          video.muted = globalMuted;
+        }).catch(() => {
+          // Retry with a delay — mobile browsers sometimes need a moment
+          setTimeout(() => {
+            if (videoRef.current && isActive) {
+              videoRef.current.muted = true;
+              videoRef.current.play().then(() => {
+                if (videoRef.current) videoRef.current.muted = globalMuted;
+              }).catch(() => {});
+            }
+          }, 500);
+        });
+      }
     } else {
       video.pause();
     }
@@ -136,6 +154,7 @@ function FeedCard({
       )}
 
       {/* Video — preload adjacent slides, autoplay active one */}
+      {/* eslint-disable-next-line react/no-unknown-property */}
       <video
         ref={videoRef}
         src={tutorial.demoVideoUrl}
@@ -144,10 +163,19 @@ function FeedCard({
         muted={isMuted}
         loop
         playsInline
+        autoPlay={isActive}
         preload={isActive || preload ? "auto" : "none"}
+        {...({ "webkit-playsinline": "true" } as any)}
         onError={(e) => {
           const vid = e.currentTarget;
           console.error("[Feed] Video error:", vid.src, vid.error?.message);
+          // Retry once on error (mobile networks can be flaky)
+          if (vid.src && isActive) {
+            setTimeout(() => {
+              vid.load();
+              vid.play().catch(() => {});
+            }, 1000);
+          }
         }}
       />
 

@@ -8,9 +8,9 @@ interface BuildInfo {
 }
 
 const defaultBuildInfo: BuildInfo = {
-  version: 'v1.56',
-  color: '#6BB8FF',
-  colorName: 'sky',
+  version: 'v1.59',
+  color: '#9DFF6B',
+  colorName: 'lime',
   timestamp: new Date().toISOString()
 };
 

@@ -35,10 +35,10 @@ const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
 
 function resolveVideoUrl<T extends { demoVideoUrl: string; demoVideoKey: string; tutorialVideoUrl: string; tutorialVideoKey: string; thumbnailUrl?: string | null; thumbnailKey?: string | null }>(tutorial: T): T {
   const demoUrl = tutorial.demoVideoKey
-    ? `/api/video/${tutorial.demoVideoKey}#t=0.001`
+    ? `/api/video/${tutorial.demoVideoKey}`
     : tutorial.demoVideoUrl;
   const tutorialUrl = tutorial.tutorialVideoKey
-    ? `/api/video/${tutorial.tutorialVideoKey}#t=0.001`
+    ? `/api/video/${tutorial.tutorialVideoKey}`
     : tutorial.tutorialVideoUrl;
   // Resolve thumbnail: use storage proxy URL if key exists
   const thumbUrl = tutorial.thumbnailKey

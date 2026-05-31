@@ -198,3 +198,7 @@
 - [x] Add startup migration to auto-create thumbnail_url and thumbnail_key columns if missing in Railway PostgreSQL
 - [x] Migration added to both db.ts and db-postgres.ts (db-postgres is what routers.ts uses)
 - [x] No OAuth code touched
+
+## v1.59 - Mobile Video Fix
+
+- [x] Feed videos show on desktop but not on mobile
