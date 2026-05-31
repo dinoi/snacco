@@ -304,7 +304,7 @@ export default function CreatorUpload() {
       try {
         toast.info(`Compressing video for faster streaming...`);
         const result = await compressVideo(file, {
-          videoBitrate: 4_000_000, // 4 Mbps
+          videoBitrate: 2_500_000, // 2.5 Mbps — targets ~5-10MB for 10-30s clips
           maxWidth: 1080,
           maxHeight: 1920,
           onProgress: setCompressProgress,

@@ -2,6 +2,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { formatTime } from "@/lib/utils";
+import { compressVideo, isCompressionSupported, shouldCompress } from "@/lib/videoCompressor";
 import {
   CheckCircle,
   ChevronUp,
@@ -132,6 +133,8 @@ export default function CreatorEdit() {
   const [uploadingType, setUploadingType] = useState<"demo" | "tutorial" | null>(null);
   const [thumbnailDataUrl, setThumbnailDataUrl] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [compressing, setCompressing] = useState(false);
+  const [compressProgress, setCompressProgress] = useState(0);
 
   // Player state (chapter marking step)
   const [isPlaying, setIsPlaying] = useState(false);
@@ -288,17 +291,43 @@ export default function CreatorEdit() {
       return;
     }
 
-    const localUrl = URL.createObjectURL(file);
     setThumbnailDataUrl(null);
-    setUploading(true);
-    setUploadProgress(0);
     setUploadingType(type);
     setUploadError(null);
 
     generateThumbnail(file).then((dataUrl) => setThumbnailDataUrl(dataUrl));
 
+    // ── Compress video if it's large (>5MB) and browser supports it ──
+    let fileToUpload: File = file;
+    if (shouldCompress(file, 5) && isCompressionSupported()) {
+      setCompressing(true);
+      setCompressProgress(0);
+      try {
+        toast.info(`Compressing video for faster streaming...`);
+        const result = await compressVideo(file, {
+          videoBitrate: 2_500_000,
+          maxWidth: 1080,
+          maxHeight: 1920,
+          onProgress: setCompressProgress,
+        });
+        const compressedFile = new File([result.blob], file.name, { type: result.blob.type || "video/mp4" });
+        const savings = ((1 - result.compressedSize / result.originalSize) * 100).toFixed(0);
+        toast.success(`Compressed: ${savings}% smaller (${(result.compressedSize / 1024 / 1024).toFixed(1)}MB)`);
+        fileToUpload = compressedFile;
+      } catch (err) {
+        console.warn("[Compression] Failed, uploading original:", err);
+        toast.info("Compression skipped, uploading original file.");
+      } finally {
+        setCompressing(false);
+      }
+    }
+
+    const localUrl = URL.createObjectURL(fileToUpload);
+    setUploading(true);
+    setUploadProgress(0);
+
     try {
-      const result = await uploadVideoDirect(file, type, setUploadProgress);
+      const result = await uploadVideoDirect(fileToUpload, type, setUploadProgress);
       const uploaded: UploadedVideo = {
         url: result.url,
         key: result.key,

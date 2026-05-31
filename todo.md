@@ -242,5 +242,11 @@
 - [x] Verified: Range requests work (206 Partial Content with Content-Range)
 - [x] Removed debug/diagnostic endpoints (/api/debug/s3, /api/debug/stream, /api/debug/pipe)
 - [x] Cleaned up test scripts (test-s3.mjs, test-presigned-vhost.mjs, etc.)
-- [ ] Video proxy route (/api/video/:key) kept as fallback for edge cases
-- [ ] Push to Railway and verify video playback on desktop and mobile
+- [x] Video proxy route (/api/video/:key) kept as fallback for edge cases
+- [x] Push to Railway and verify video playback on desktop and mobile
+
+## v1.68 - Video Compression & Loading UX Fix
+- [x] Fix compression progress bar (stays at 0% then jumps to done - bad UX)
+- [x] Ensure video compressor is properly applied to all uploads (98MB files getting through)
+- [x] Add poster thumbnail to video elements for instant visual feedback while buffering
+- [x] Lower compression bitrate for shorter clips to target 5-15MB output

@@ -17,13 +17,13 @@ function VideoLoadingSkeleton({ thumbnailUrl }: { thumbnailUrl?: string }) {
         <img
           src={thumbnailUrl}
           alt=""
-          className="absolute inset-0 w-full h-full object-cover blur-md scale-105 opacity-60"
+          className="absolute inset-0 w-full h-full object-cover opacity-80"
         />
       ) : null}
       {/* Shimmer overlay */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/60" />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/50" />
       <div className="absolute inset-0 flex items-center justify-center">
-        <div className="w-12 h-12 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+        <div className="w-10 h-10 rounded-full border-2 border-white/40 border-t-white animate-spin" />
       </div>
     </div>
   );
@@ -140,6 +140,7 @@ function FeedCard({
       <video
         ref={videoRef}
         src={tutorial.demoVideoUrl}
+        poster={tutorial.thumbnailUrl || undefined}
         className="absolute inset-0 w-full h-full object-cover"
         muted
         loop

@@ -54,18 +54,21 @@ export async function compressVideo(
 
   const originalSize = file.size;
 
+  // Report initial progress immediately so UI shows activity
+  onProgress?.(0.01);
+
   // Create a video element to decode the source
   const video = document.createElement("video");
   video.muted = true;
   video.playsInline = true;
   video.preload = "auto";
-  // Prevent the video from being visible
+  // Keep the video offscreen but with real dimensions (iOS needs this)
   video.style.position = "fixed";
   video.style.top = "-9999px";
   video.style.left = "-9999px";
-  video.style.width = "1px";
-  video.style.height = "1px";
-  video.style.opacity = "0";
+  video.style.width = "320px";
+  video.style.height = "240px";
+  video.style.opacity = "0.01";
   document.body.appendChild(video);
 
   const videoUrl = URL.createObjectURL(file);
@@ -86,11 +89,15 @@ export async function compressVideo(
     video.oncanplay = done;
     video.oncanplaythrough = done;
     video.onloadeddata = () => { if (video.readyState >= 2) done(); };
-    video.onloadedmetadata = () => { setTimeout(done, 500); };
+    video.onloadedmetadata = () => {
+      onProgress?.(0.02); // Show 2% when metadata loaded
+      setTimeout(done, 500);
+    };
     video.onerror = () => { clearTimeout(timeout); reject(new Error("Failed to load video")); };
     video.load();
   });
 
+  onProgress?.(0.03); // 3% - metadata loaded, setting up
   const duration = video.duration;
   const srcWidth = video.videoWidth;
   const srcHeight = video.videoHeight;
@@ -155,6 +162,7 @@ export async function compressVideo(
     video.addEventListener("timeupdate", onTime);
   });
   console.log("[Compressor] Playback confirmed, currentTime:", video.currentTime);
+  onProgress?.(0.04); // 4% - playback confirmed, setting up recording
 
   // Unmute after play succeeds — captureStream() won't output audio tracks
   // from a muted element. We needed muted=true for autoplay policy, but now
@@ -230,13 +238,28 @@ export async function compressVideo(
   recorder.start(500);
   drawLoop();
 
-  // Progress reporting
+  // Report 5% to show recording has started
+  onProgress?.(0.05);
+
+  // Progress reporting — use both setInterval and timeupdate for reliability
+  // iOS Safari doesn't always fire timeupdate for offscreen videos
   const progressInterval = setInterval(() => {
     if (onProgress && duration > 0) {
-      const progress = Math.min(video.currentTime / duration, 0.99);
-      onProgress(progress);
+      // Map progress: 5% is start, 95% is end of playback
+      const rawProgress = video.currentTime / duration;
+      const mappedProgress = 0.05 + rawProgress * 0.90;
+      onProgress(Math.min(mappedProgress, 0.95));
     }
-  }, 250);
+  }, 200);
+  // Also listen to timeupdate as a backup
+  const handleTimeUpdate = () => {
+    if (onProgress && duration > 0) {
+      const rawProgress = video.currentTime / duration;
+      const mappedProgress = 0.05 + rawProgress * 0.90;
+      onProgress(Math.min(mappedProgress, 0.95));
+    }
+  };
+  video.addEventListener("timeupdate", handleTimeUpdate);
 
   // Wait for video to finish playing
   await new Promise<void>((resolve) => {
@@ -251,6 +274,7 @@ export async function compressVideo(
   // Stop everything
   animationRunning = false;
   clearInterval(progressInterval);
+  video.removeEventListener("timeupdate", handleTimeUpdate);
 
   // Draw one last frame
   ctx.drawImage(video, 0, 0, outWidth, outHeight);

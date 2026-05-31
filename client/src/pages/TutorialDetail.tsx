@@ -70,6 +70,7 @@ export default function TutorialDetail() {
         {/* Background: simple muted autoplay video — same URL as Feed for HTTP cache hit */}
         <video
           src={tutorial.demoVideoUrl}
+          poster={tutorial.thumbnailUrl || undefined}
           className="absolute inset-0 w-full h-full object-cover"
           muted
           loop

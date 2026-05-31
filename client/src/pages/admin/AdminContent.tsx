@@ -55,7 +55,11 @@ export default function AdminContent() {
             >
               {/* Thumbnail */}
               <div className="w-12 h-16 rounded-lg bg-black overflow-hidden shrink-0">
-                <video src={t.demoVideoUrl} className="w-full h-full object-cover" muted playsInline />
+                {t.thumbnailUrl ? (
+                  <img src={t.thumbnailUrl} className="w-full h-full object-cover" alt={t.title} loading="lazy" />
+                ) : (
+                  <video src={t.demoVideoUrl} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+                )}
               </div>
 
               {/* Info */}

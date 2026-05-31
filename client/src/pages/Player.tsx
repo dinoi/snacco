@@ -165,6 +165,7 @@ export default function Player() {
         <video
           ref={videoRef}
           src={tutorial?.tutorialVideoUrl}
+          poster={tutorial?.thumbnailUrl || undefined}
           className="w-full h-full object-contain"
           playsInline
           preload="auto"
