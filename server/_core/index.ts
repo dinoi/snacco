@@ -107,9 +107,44 @@ async function startServer() {
     nodeStream.pipe(res);
   }
 
+  // ── Diagnostic endpoint: check S3 connectivity ──
+  app.get("/api/debug/s3", async (_req: Request, res: Response) => {
+    const t0 = Date.now();
+    const diag: Record<string, any> = {
+      endpoint: ENV.railwayStorageEndpoint || "(not set)",
+      bucket: ENV.railwayStorageBucket || "(not set)",
+      accessKeySet: !!ENV.railwayAccessKeyId,
+      secretKeySet: !!ENV.railwaySecretAccessKey,
+    };
+    try {
+      const client = getS3Client();
+      const testKey = "videos/1/demo/1780191267504_jacket_08057125.mp4";
+      diag.clientCreated = true;
+      diag.clientCreatedMs = Date.now() - t0;
+
+      const t1 = Date.now();
+      const head = await Promise.race([
+        client.send(new HeadObjectCommand({ Bucket: ENV.railwayStorageBucket, Key: testKey })),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("HeadObject timed out after 10s")), 10000)),
+      ]) as any;
+      diag.headObjectMs = Date.now() - t1;
+      diag.headObjectSize = head.ContentLength;
+      diag.headObjectType = head.ContentType;
+      diag.success = true;
+    } catch (err: any) {
+      diag.error = err?.message;
+      diag.errorName = err?.name;
+      diag.success = false;
+    }
+    diag.totalMs = Date.now() - t0;
+    console.log("[S3 Diag]", JSON.stringify(diag));
+    res.json(diag);
+  });
+
   app.get("/api/video/:key(*)", async (req: Request, res: Response) => {
     const key = req.params.key;
     if (!key) return res.status(400).json({ error: "Missing key" });
+    console.log(`[VideoProxy] Request: ${key}, Range: ${req.headers.range || "none"}`);
 
     // Check local storage first
     const localPath = getLocalFilePath(key);
@@ -118,8 +153,10 @@ async function startServer() {
     }
 
     try {
+      const t0 = Date.now();
       const client = getS3Client();
       const bucket = ENV.railwayStorageBucket;
+      console.log(`[VideoProxy] Using bucket=${bucket}, endpoint=${ENV.railwayStorageEndpoint}`);
       const rangeHeader = req.headers.range;
 
       // ── RANGE request: need total size up front for Content-Range header ──
