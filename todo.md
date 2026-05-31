@@ -223,3 +223,9 @@
 - [x] Cache presigned URLs in-memory (~58 min TTL, URLs expire at 1 hour)
 - [x] Vitest validates presigned URL generation works with Railway S3
 - [x] Version bumped to v1.64 in all 3 files
+
+## v1.65 - Fix Video Playback (Desktop Buffering + Mobile Black Screen)
+
+- [ ] Desktop: video plays in short bursts then stalls with spinner (constant buffering through presigned URL redirect)
+- [ ] Mobile: black screen with infinite spinner (presigned URL 302 redirect not working on mobile Safari)
+- [ ] Root cause: presigned URL redirect (302) breaks browser video Range request handling — need streaming proxy with forcePathStyle fix

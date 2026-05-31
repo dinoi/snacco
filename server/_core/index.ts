@@ -12,8 +12,8 @@ import { serveStatic, setupVite } from "./vite";
 import { registerUploadRoute } from "../uploadRoute-railway";
 import { ENV } from "./env";
 import { getLocalFilePath, getS3Client } from "../railway-storage";
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
+import { Readable } from "stream";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -65,27 +65,25 @@ async function startServer() {
     res.sendFile(filePath);
   });
 
-  // ── Video proxy: presigned URL redirect to S3 ──
-  // Instead of streaming bytes through the server (which hangs on Railway due to
-  // virtual-hosted DNS issues), we generate a presigned S3 URL and redirect.
-  // This is much more efficient: no bandwidth through Railway, direct S3 → client.
-  // Presigned URLs are cached in-memory to avoid re-signing on every request.
-  const presignedCache = new Map<string, { url: string; expiresAt: number }>();
-  const PRESIGNED_TTL = 3500_000; // ~58 minutes (URLs expire at 1 hour)
+  // ── Video proxy: streaming proxy from S3 ──
+  // Streams video bytes from Railway S3 through the server with proper Range support.
+  // Uses forcePathStyle:true in S3 client (see railway-storage.ts).
+  //
+  // Key optimisations:
+  //  • Metadata cache (size + content-type) avoids HeadObject round-trips.
+  //  • Non-Range requests skip HeadObject entirely — size is read from the
+  //    GetObject response itself, so cold loads pay zero extra latency.
+  //  • Vary header removed so CDN/proxy doesn't split cache by Accept-Encoding.
+  //  • Cache-Control immutable enables Feed→TutorialDetail cache sharing.
+  const metadataCache = new Map<string, { size: number; contentType: string; expiresAt: number }>();
+  const METADATA_TTL = 3600_000; // 1 hour
 
-  async function getPresignedVideoUrl(client: S3Client, bucket: string, key: string): Promise<string> {
-    const cached = presignedCache.get(key);
-    if (cached && Date.now() < cached.expiresAt) {
-      return cached.url;
+  function cacheMetadata(key: string, size: number, contentType: string) {
+    metadataCache.set(key, { size, contentType, expiresAt: Date.now() + METADATA_TTL });
+    if (metadataCache.size > 200) {
+      const oldest = metadataCache.keys().next().value;
+      if (oldest) metadataCache.delete(oldest);
     }
-    const url = await getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn: 3600 });
-    presignedCache.set(key, { url, expiresAt: Date.now() + PRESIGNED_TTL });
-    // Cap cache size at 200 entries
-    if (presignedCache.size > 200) {
-      const oldest = presignedCache.keys().next().value;
-      if (oldest) presignedCache.delete(oldest);
-    }
-    return url;
   }
 
   app.get("/api/video/:key(*)", async (req: Request, res: Response) => {
@@ -101,12 +99,89 @@ async function startServer() {
     try {
       const client = getS3Client();
       const bucket = ENV.railwayStorageBucket;
-      const presignedUrl = await getPresignedVideoUrl(client, bucket, key);
-      // 302 redirect — browser follows this and gets video directly from S3.
-      // S3 handles Range requests natively, so seeking/scrubbing works automatically.
-      res.redirect(302, presignedUrl);
+      const rangeHeader = req.headers.range;
+
+      // ── RANGE request: need total size up front for Content-Range header ──
+      if (rangeHeader) {
+        // Try cache first; only HeadObject on cache miss
+        let cached = metadataCache.get(key);
+        if (!cached || Date.now() >= cached.expiresAt) {
+          const head = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+          const size = head.ContentLength ?? 0;
+          const ct = head.ContentType ?? "video/mp4";
+          cacheMetadata(key, size, ct);
+          cached = metadataCache.get(key)!;
+        }
+        const totalSize = cached.size;
+
+        const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+        let start = 0;
+        let end = totalSize - 1;
+        if (match) {
+          start = parseInt(match[1], 10);
+          end = match[2] ? parseInt(match[2], 10) : totalSize - 1;
+          if (start >= totalSize || end >= totalSize) {
+            res.status(416).set("Content-Range", `bytes */${totalSize}`).end();
+            return;
+          }
+        }
+
+        const contentLength = end - start + 1;
+        const s3Resp = await client.send(
+          new GetObjectCommand({ Bucket: bucket, Key: key, Range: `bytes=${start}-${end}` })
+        );
+
+        res.status(206);
+        res.removeHeader("Vary");
+        res.set({
+          "Content-Type": cached.contentType,
+          "Content-Length": String(contentLength),
+          "Content-Range": `bytes ${start}-${end}/${totalSize}`,
+          "Accept-Ranges": "bytes",
+          "Cache-Control": "public, max-age=86400, immutable",
+        });
+
+        if (s3Resp.Body instanceof Readable) {
+          s3Resp.Body.pipe(res);
+        } else if (s3Resp.Body && typeof (s3Resp.Body as any).transformToByteArray === "function") {
+          const bytes = await (s3Resp.Body as any).transformToByteArray();
+          res.end(Buffer.from(bytes));
+        } else {
+          res.status(500).json({ error: "Unexpected S3 response body type" });
+        }
+        return;
+      }
+
+      // ── NON-RANGE request: skip HeadObject, read size from GetObject response ──
+      const s3Resp = await client.send(
+        new GetObjectCommand({ Bucket: bucket, Key: key })
+      );
+
+      const totalSize = s3Resp.ContentLength ?? 0;
+      const contentType = s3Resp.ContentType ?? "video/mp4";
+
+      // Warm the cache for future Range requests
+      cacheMetadata(key, totalSize, contentType);
+
+      res.status(200);
+      res.removeHeader("Vary");
+      res.set({
+        "Content-Type": contentType,
+        "Content-Length": String(totalSize),
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "public, max-age=86400, immutable",
+      });
+
+      if (s3Resp.Body instanceof Readable) {
+        s3Resp.Body.pipe(res);
+      } else if (s3Resp.Body && typeof (s3Resp.Body as any).transformToByteArray === "function") {
+        const bytes = await (s3Resp.Body as any).transformToByteArray();
+        res.end(Buffer.from(bytes));
+      } else {
+        res.status(500).json({ error: "Unexpected S3 response body type" });
+      }
     } catch (err: any) {
-      console.error("[VideoProxy] Error generating presigned URL:", key, err?.message);
+      console.error("[VideoProxy] Error streaming:", key, err?.message);
       if (!res.headersSent) {
         res.status(404).json({ error: "Video not found" });
       }
