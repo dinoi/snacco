@@ -214,3 +214,12 @@
 - [x] Fix wheel handler re-registration loop (goToSlideRef + empty deps)
 - [x] Fix video stuck on frame 1 (readyState >= 2 check before play, canplay fallback)
 - [x] Replace TutorialDetail video with static thumbnail (simplified to muted autoplay video, no loading skeleton)
+
+## v1.64 - Fix Video Proxy Hang (CRITICAL)
+
+- [x] Root cause: S3 client missing `forcePathStyle: true` — virtual-hosted DNS resolution hangs on Railway
+- [x] Fix: Add `forcePathStyle: true` to getS3Client() in railway-storage.ts
+- [x] Replace streaming proxy with presigned URL redirect (302) — eliminates bandwidth bottleneck entirely
+- [x] Cache presigned URLs in-memory (~58 min TTL, URLs expire at 1 hour)
+- [x] Vitest validates presigned URL generation works with Railway S3
+- [x] Version bumped to v1.64 in all 3 files

@@ -23,6 +23,7 @@ export function getS3Client(): S3Client {
     s3Client = new S3Client({
       region: "auto",
       endpoint: ENV.railwayStorageEndpoint,
+      forcePathStyle: true,
       credentials: {
         accessKeyId: ENV.railwayAccessKeyId,
         secretAccessKey: ENV.railwaySecretAccessKey,
