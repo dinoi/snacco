@@ -599,10 +599,10 @@ export default function CreatorUpload() {
                   <p className="text-white/60 text-sm text-center">
                     {compressProgress < 0.05
                       ? "Setting up compression…"
-                      : `Playing through video in real-time • ${Math.round(compressProgress * 100)}%`}
+                      : `Compressing • ${Math.round(compressProgress * 100)}%`}
                   </p>
                   <p className="text-white/40 text-xs text-center">
-                    This takes roughly as long as the video itself
+                    Usually takes a few seconds
                   </p>
                   <div className="w-full max-w-xs h-2 bg-white/20 rounded-full overflow-hidden">
                     <div className="h-full rounded-full transition-all duration-500"
@@ -716,10 +716,10 @@ export default function CreatorUpload() {
                   <p className="text-white/60 text-sm text-center">
                     {compressProgress < 0.05
                       ? "Setting up compression…"
-                      : `Playing through video in real-time • ${Math.round(compressProgress * 100)}%`}
+                      : `Compressing • ${Math.round(compressProgress * 100)}%`}
                   </p>
                   <p className="text-white/40 text-xs text-center">
-                    This takes roughly as long as the video itself
+                    Usually takes a few seconds
                   </p>
                   <div className="w-full max-w-xs h-2 bg-white/20 rounded-full overflow-hidden">
                     <div className="h-full rounded-full transition-all duration-500"

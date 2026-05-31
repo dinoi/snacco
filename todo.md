@@ -266,3 +266,15 @@
 ## v1.71 - Player Loading UX
 - [x] Player loading thumbnail should show tutorial video thumbnail, not demo thumbnail
 - [x] Investigate and improve full video load speed - added prefetch on TutorialDetail, moov atom already at start
+
+## v1.72 - Compression Reliability Fix (CRITICAL)
+- [x] Rewrite videoCompressor.ts to use WebCodecs API (VideoDecoder + VideoEncoder) instead of real-time playback
+- [x] Use Mediabunny library for demuxing input video and muxing output MP4
+- [x] Compression uses WebCodecs hardware encoding, no dependency on video element playback
+- [x] Fix iOS Safari compression stalling at 5% (root cause: browser throttles hidden video playback)
+- [x] Fix desktop compression stalling at ~50% (same root cause, less aggressive throttling)
+- [x] Fix truncated/single-frame output videos
+- [x] Reliable progress reporting via Mediabunny conversion progress callback
+- [x] Fallback to improved MediaRecorder approach if WebCodecs unavailable
+- [ ] Test on mobile (iPhone Safari) - hero use case (needs user testing)
+- [x] Version badge bumped to v1.72
