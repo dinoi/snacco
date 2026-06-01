@@ -284,4 +284,9 @@
 - [x] Add draggable markers on the timeline for fine-tuning chapter positions (constrained by adjacent markers)
 - [x] Restore chapter selectors in Player.tsx (disappeared in latest build)
 - [x] Version badge bumped to v1.73
-- [ ] Deploy to Railway (pending push)
+- [x] Deploy to Railway (pushed to GitHub, auto-deploys)
+
+## v1.74 - CreatorEdit Bug Fix + Data Reset
+- [x] Fix React error #310 in CreatorEdit.tsx (useCallback hooks order issue from v1.73 draggable markers)
+- [x] Delete all tutorials from database for fresh start
+- [ ] Deploy fix to Railway (pending push)

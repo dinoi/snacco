@@ -207,6 +207,23 @@ export default function CreatorEdit() {
     }
   };
 
+  // Drag a chapter marker on the timeline to reposition it
+  // NOTE: Must be before early returns to maintain hooks order
+  const handleChapterDrag = useCallback((chapterId: string, clientX: number, trackEl: HTMLElement) => {
+    if (!trackEl || duration === 0) return;
+    const rect = trackEl.getBoundingClientRect();
+    let newTime = Math.max(0, Math.min(((clientX - rect.left) / rect.width) * duration, duration));
+    // Constrain to not overlap adjacent markers (minimum 1s gap)
+    const sorted = [...chapters].sort((a, b) => a.time - b.time);
+    const idx = sorted.findIndex(c => c.id === chapterId);
+    const minTime = idx > 0 ? sorted[idx - 1].time + 1 : 0;
+    const maxTime = idx < sorted.length - 1 ? sorted[idx + 1].time - 1 : duration;
+    newTime = Math.max(minTime, Math.min(newTime, maxTime));
+    setChapters(prev => prev.map(c => c.id === chapterId ? { ...c, time: newTime } : c).sort((a, b) => a.time - b.time));
+    // Also seek video to the new position
+    if (tutorialVideoRef.current) tutorialVideoRef.current.currentTime = newTime;
+  }, [chapters, duration]);
+
   if (!isAuthenticated || !user?.isCreator) {
     return (
       <div className="min-h-dvh bg-background flex flex-col items-center justify-center px-6 text-center gap-4">
@@ -372,22 +389,6 @@ export default function CreatorEdit() {
     setChapters(chapters.map(c => c.id === id ? { ...c, label: editingLabel } : c));
     setEditingChapterId(null);
   };
-
-  // Drag a chapter marker on the timeline to reposition it
-  const handleChapterDrag = useCallback((chapterId: string, clientX: number, trackEl: HTMLElement) => {
-    if (!trackEl || duration === 0) return;
-    const rect = trackEl.getBoundingClientRect();
-    let newTime = Math.max(0, Math.min(((clientX - rect.left) / rect.width) * duration, duration));
-    // Constrain to not overlap adjacent markers (minimum 1s gap)
-    const sorted = [...chapters].sort((a, b) => a.time - b.time);
-    const idx = sorted.findIndex(c => c.id === chapterId);
-    const minTime = idx > 0 ? sorted[idx - 1].time + 1 : 0;
-    const maxTime = idx < sorted.length - 1 ? sorted[idx + 1].time - 1 : duration;
-    newTime = Math.max(minTime, Math.min(newTime, maxTime));
-    setChapters(prev => prev.map(c => c.id === chapterId ? { ...c, time: newTime } : c).sort((a, b) => a.time - b.time));
-    // Also seek video to the new position
-    if (tutorialVideoRef.current) tutorialVideoRef.current.currentTime = newTime;
-  }, [chapters, duration]);
 
   const jumpToChapter = (time: number) => {
     if (tutorialVideoRef.current) {
