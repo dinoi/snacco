@@ -310,4 +310,8 @@
 - [x] CreatorEdit: Demo video step shows still frame thumbnail instead of playable video
 - [x] CreatorEdit: Tutorial video step shows still frame thumbnail instead of playable video
 - [x] Version badge bumped to v1.76
-- [ ] Deploy to Railway (pending push)
+- [x] Deploy to Railway (pushed to GitHub, auto-deploys)
+
+## v1.77 - Player Chapter Pill Auto-Scroll
+- [x] Player.tsx: Auto-scroll chapter pill container to reveal active chapter when it's off-screen
+- [x] Deploy to Railway (pending push)
