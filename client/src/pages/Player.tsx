@@ -212,7 +212,7 @@ export default function Player() {
         <video
           ref={videoRef}
           src={tutorial?.tutorialVideoUrl}
-          className="absolute inset-0 w-full h-full object-contain"
+          className="absolute inset-0 w-full h-full object-cover"
           playsInline
           preload="auto"
           onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}

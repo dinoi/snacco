@@ -115,6 +115,12 @@ export default function CreatorEdit() {
     { enabled: !!tutorialId && isAuthenticated }
   );
 
+  // Load chapters separately (tutorials.get doesn't include them)
+  const { data: savedChapters } = trpc.tutorials.getChapters.useQuery(
+    { tutorialId },
+    { enabled: !!tutorialId && isAuthenticated }
+  );
+
   const [step, setStep] = useState<EditStep>("meta");
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("");
@@ -171,18 +177,22 @@ export default function CreatorEdit() {
         duration: 0,
         fileName: "tutorial.mp4",
       });
-      // Load chapters
-      if (tutorial.chapters) {
-        setChapters(
-          tutorial.chapters.map((ch) => ({
-            id: crypto.randomUUID(),
-            time: ch.timestampSeconds,
-            label: ch.label,
-          }))
-        );
-      }
+      // Chapters are loaded via separate query (see savedChapters effect below)
     }
   }, [tutorial]);
+
+  // Load chapters from separate query into local state
+  useEffect(() => {
+    if (savedChapters && savedChapters.length > 0 && chapters.length === 0) {
+      setChapters(
+        savedChapters.map((ch) => ({
+          id: crypto.randomUUID(),
+          time: ch.timestampSeconds,
+          label: ch.label,
+        }))
+      );
+    }
+  }, [savedChapters]);
 
   const updateMutation = trpc.tutorials.update.useMutation({
     onSuccess: () => {
@@ -574,13 +584,20 @@ export default function CreatorEdit() {
               <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wide">Demo Clip (max 30s)</p>
               {demoVideo && (
                 <div className="relative w-full aspect-[9/16] bg-black rounded-2xl overflow-hidden mb-4">
-                  <video
-                    src={demoVideo.localUrl}
-                    poster={thumbnailDataUrl || undefined}
-                    className="w-full h-full object-cover"
-                    controls
-                    preload="auto"
-                  />
+                  {thumbnailDataUrl ? (
+                    <img src={thumbnailDataUrl} className="w-full h-full object-cover" alt="Demo preview" />
+                  ) : (
+                    <video
+                      src={demoVideo.localUrl}
+                      className="w-full h-full object-cover"
+                      muted
+                      playsInline
+                      preload="metadata"
+                    />
+                  )}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="bg-black/40 rounded-full px-3 py-1.5 text-white/80 text-xs font-medium">Demo Video</div>
+                  </div>
                   <button
                     onClick={() => setDemoVideo(null)}
                     className="absolute top-2 right-2 w-8 h-8 bg-red-500 rounded-full flex items-center justify-center"
@@ -642,13 +659,22 @@ export default function CreatorEdit() {
               <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wide">Full Tutorial (max 5 min)</p>
               {tutorialVideo && (
                 <div className="relative w-full aspect-[9/16] bg-black rounded-2xl overflow-hidden mb-4">
-                  <video
-                    src={tutorialVideo.localUrl}
-                    poster={thumbnailDataUrl || undefined}
-                    className="w-full h-full object-cover"
-                    controls
-                    preload="auto"
-                  />
+                  {tutorialThumbnailDataUrl ? (
+                    <img src={tutorialThumbnailDataUrl} className="w-full h-full object-cover" alt="Tutorial preview" />
+                  ) : thumbnailDataUrl ? (
+                    <img src={thumbnailDataUrl} className="w-full h-full object-cover" alt="Tutorial preview" />
+                  ) : (
+                    <video
+                      src={tutorialVideo.localUrl}
+                      className="w-full h-full object-cover"
+                      muted
+                      playsInline
+                      preload="metadata"
+                    />
+                  )}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="bg-black/40 rounded-full px-3 py-1.5 text-white/80 text-xs font-medium">Full Tutorial</div>
+                  </div>
                   <button
                     onClick={() => setTutorialVideo(null)}
                     className="absolute top-2 right-2 w-8 h-8 bg-red-500 rounded-full flex items-center justify-center"

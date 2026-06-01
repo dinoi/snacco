@@ -302,4 +302,12 @@
 - [x] Chapter marking: flash/highlight animation on new chapter row
 - [x] Chapter marking: pulse animation on new timeline marker
 - [x] Version badge bumped to v1.75
+- [x] Deploy to Railway (pushed to GitHub, auto-deploys)
+
+## v1.76 - Player Full-Width + Edit Flow Fixes
+- [x] Player.tsx: Video should be full-width edge-to-edge (no padding/margins on sides)
+- [x] CreatorEdit: Fix chapters not loading when editing (fetch from getChapters procedure)
+- [x] CreatorEdit: Demo video step shows still frame thumbnail instead of playable video
+- [x] CreatorEdit: Tutorial video step shows still frame thumbnail instead of playable video
+- [x] Version badge bumped to v1.76
 - [ ] Deploy to Railway (pending push)
