@@ -330,4 +330,9 @@
 - [x] Add confirmation dialog before replacing tutorial video in CreatorEdit
 - [x] "Get more" button grants 20 free tokens when user is out of tokens
 - [x] Version badge bumped to v1.79
-- [ ] Deploy to Railway (pending push)
+- [x] Deploy to Railway (pushed to GitHub, auto-deploys)
+
+## v1.80 - Edit Screen Thumbnail Size Fix
+- [x] Reduce demo/tutorial thumbnail height in edit screens to 45vh so buttons stay above the fold
+- [x] Version badge bumped to v1.80
+- [ ] Deploy to Railway

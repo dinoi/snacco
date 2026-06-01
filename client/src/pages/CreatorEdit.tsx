@@ -587,13 +587,14 @@ export default function CreatorEdit() {
             <div>
               <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wide">Demo Clip (max 30s)</p>
               {demoVideo && (
-                <div className="relative w-full bg-black rounded-2xl overflow-hidden mb-4" style={{ maxHeight: '825px', aspectRatio: '9/16' }}>
+                <div className="relative w-full bg-black rounded-2xl overflow-hidden mb-4" style={{ maxHeight: '45vh' }}>
                   {thumbnailDataUrl ? (
-                    <img src={thumbnailDataUrl} className="w-full h-full object-cover" alt="Demo preview" />
+                    <img src={thumbnailDataUrl} className="w-full h-full object-cover" style={{ maxHeight: '45vh' }} alt="Demo preview" />
                   ) : (
                     <video
                       src={demoVideo.localUrl}
                       className="w-full h-full object-cover"
+                      style={{ maxHeight: '45vh' }}
                       muted
                       playsInline
                       preload="metadata"
@@ -662,15 +663,16 @@ export default function CreatorEdit() {
             <div>
               <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wide">Full Tutorial (max 5 min)</p>
               {tutorialVideo && (
-                <div className="relative w-full bg-black rounded-2xl overflow-hidden mb-4" style={{ maxHeight: '825px', aspectRatio: '9/16' }}>
+                <div className="relative w-full bg-black rounded-2xl overflow-hidden mb-4" style={{ maxHeight: '45vh' }}>
                   {tutorialThumbnailDataUrl ? (
-                    <img src={tutorialThumbnailDataUrl} className="w-full h-full object-cover" alt="Tutorial preview" />
+                    <img src={tutorialThumbnailDataUrl} className="w-full h-full object-cover" style={{ maxHeight: '45vh' }} alt="Tutorial preview" />
                   ) : thumbnailDataUrl ? (
-                    <img src={thumbnailDataUrl} className="w-full h-full object-cover" alt="Tutorial preview" />
+                    <img src={thumbnailDataUrl} className="w-full h-full object-cover" style={{ maxHeight: '45vh' }} alt="Tutorial preview" />
                   ) : (
                     <video
                       src={tutorialVideo.localUrl}
                       className="w-full h-full object-cover"
+                      style={{ maxHeight: '45vh' }}
                       muted
                       playsInline
                       preload="metadata"
