@@ -335,4 +335,12 @@
 ## v1.80 - Edit Screen Thumbnail Size Fix
 - [x] Reduce demo/tutorial thumbnail height in edit screens to 45vh so buttons stay above the fold
 - [x] Version badge bumped to v1.80
-- [ ] Deploy to Railway
+- [x] Deploy to Railway (pushed to GitHub, auto-deploys)
+
+## v1.81 - CreatorEdit Video Display Fixes
+- [x] Demo replace screen: use actual video element (muted autoplay loop) instead of broken thumbnail
+- [x] Tutorial replace screen: use actual video element (muted autoplay loop) instead of broken thumbnail
+- [x] Chapters step: fix video not loading/playing (removed poster attr blocking display, increased maxHeight to 45vh)
+- [x] Chapters step: move instruction text below video (between video and Add Step Here controls)
+- [x] Version badge bumped to v1.81
+- [ ] Deploy to Railway (pushed to GitHub, auto-deploys)

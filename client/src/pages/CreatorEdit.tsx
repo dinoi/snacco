@@ -587,28 +587,21 @@ export default function CreatorEdit() {
             <div>
               <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wide">Demo Clip (max 30s)</p>
               {demoVideo && (
-                <div className="relative w-full bg-black rounded-2xl overflow-hidden mb-4" style={{ maxHeight: '45vh' }}>
-                  {thumbnailDataUrl ? (
-                    <img src={thumbnailDataUrl} className="w-full h-full object-cover" style={{ maxHeight: '45vh' }} alt="Demo preview" />
-                  ) : (
-                    <video
-                      src={demoVideo.localUrl}
-                      className="w-full h-full object-cover"
-                      style={{ maxHeight: '45vh' }}
-                      muted
-                      playsInline
-                      preload="metadata"
-                    />
-                  )}
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="bg-black/40 rounded-full px-3 py-1.5 text-white/80 text-xs font-medium">Demo Video</div>
+                <div className="relative w-full rounded-2xl overflow-hidden mb-4 bg-black" style={{ maxHeight: '45vh' }}>
+                  <video
+                    src={demoVideo.localUrl || demoVideo.url}
+                    className="w-full h-full object-cover"
+                    style={{ maxHeight: '45vh' }}
+                    muted
+                    loop
+                    playsInline
+                    autoPlay
+                    preload="auto"
+                  />
+                  <div className="absolute top-3 left-3 bg-black/60 rounded-full px-2.5 py-1 flex items-center gap-1.5">
+                    <CheckCircle size={12} className="text-green-400" />
+                    <span className="text-white text-xs font-semibold">Demo Clip</span>
                   </div>
-                  <button
-                    onClick={() => setDemoVideo(null)}
-                    className="absolute top-2 right-2 w-8 h-8 bg-red-500 rounded-full flex items-center justify-center"
-                  >
-                    <X size={16} className="text-white" />
-                  </button>
                 </div>
               )}
               <input
@@ -663,30 +656,21 @@ export default function CreatorEdit() {
             <div>
               <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wide">Full Tutorial (max 5 min)</p>
               {tutorialVideo && (
-                <div className="relative w-full bg-black rounded-2xl overflow-hidden mb-4" style={{ maxHeight: '45vh' }}>
-                  {tutorialThumbnailDataUrl ? (
-                    <img src={tutorialThumbnailDataUrl} className="w-full h-full object-cover" style={{ maxHeight: '45vh' }} alt="Tutorial preview" />
-                  ) : thumbnailDataUrl ? (
-                    <img src={thumbnailDataUrl} className="w-full h-full object-cover" style={{ maxHeight: '45vh' }} alt="Tutorial preview" />
-                  ) : (
-                    <video
-                      src={tutorialVideo.localUrl}
-                      className="w-full h-full object-cover"
-                      style={{ maxHeight: '45vh' }}
-                      muted
-                      playsInline
-                      preload="metadata"
-                    />
-                  )}
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="bg-black/40 rounded-full px-3 py-1.5 text-white/80 text-xs font-medium">Full Tutorial</div>
+                <div className="relative w-full rounded-2xl overflow-hidden mb-4 bg-black" style={{ maxHeight: '45vh' }}>
+                  <video
+                    src={tutorialVideo.localUrl || tutorialVideo.url}
+                    className="w-full h-full object-cover"
+                    style={{ maxHeight: '45vh' }}
+                    muted
+                    loop
+                    playsInline
+                    autoPlay
+                    preload="auto"
+                  />
+                  <div className="absolute top-3 left-3 bg-black/60 rounded-full px-2.5 py-1 flex items-center gap-1.5">
+                    <CheckCircle size={12} className="text-green-400" />
+                    <span className="text-white text-xs font-semibold">Full Tutorial</span>
                   </div>
-                  <button
-                    onClick={() => setTutorialVideo(null)}
-                    className="absolute top-2 right-2 w-8 h-8 bg-red-500 rounded-full flex items-center justify-center"
-                  >
-                    <X size={16} className="text-white" />
-                  </button>
                 </div>
               )}
               <input
@@ -738,16 +722,11 @@ export default function CreatorEdit() {
         {/* ── Step 4: Chapters ─────────────────────────────────────── */}
         {step === "chapters" && tutorialVideo && (
           <div className="space-y-4">
-            <p className="text-xs text-muted-foreground">
-              Play the tutorial and tap <strong className="text-foreground">Add Step Here</strong> at each key moment. Drag markers to fine-tune positions.
-            </p>
-
             {/* Video player with custom controls */}
-            <div className="relative w-full rounded-2xl overflow-hidden bg-black" style={{ aspectRatio: '9/16', maxHeight: '40vh' }}>
+            <div className="relative w-full rounded-2xl overflow-hidden bg-black" style={{ aspectRatio: '9/16', maxHeight: '45vh' }}>
               <video
                 ref={tutorialVideoRef}
                 src={tutorialVideo.localUrl || tutorialVideo.url}
-                poster={tutorialThumbnailDataUrl || thumbnailDataUrl || undefined}
                 className="w-full h-full object-contain"
                 playsInline
                 preload="auto"
@@ -882,6 +861,10 @@ export default function CreatorEdit() {
                 </div>
               </div>
             </div>
+
+            <p className="text-xs text-muted-foreground">
+              Play the tutorial and tap <strong className="text-foreground">Add Step Here</strong> at each key moment. Drag markers to fine-tune positions.
+            </p>
 
             {/* Add chapter */}
             <div className="flex gap-2">
