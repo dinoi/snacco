@@ -315,3 +315,12 @@
 ## v1.77 - Player Chapter Pill Auto-Scroll
 - [x] Player.tsx: Auto-scroll chapter pill container to reveal active chapter when it's off-screen
 - [x] Deploy to Railway (pending push)
+
+## v1.78 - CreatorEdit Improvements
+- [x] Demo replace screen: show thumbnail at ~825px height so replace button is above the fold
+- [x] Tutorial replace screen: same thumbnail height treatment
+- [x] Edit chapters screen: full working video playback (same as creation flow)
+- [x] Edit chapters screen: draggable markers on timeline
+- [x] Edit chapters screen: ability to add, remove, and edit chapter names
+- [x] Version badge bumped to v1.78
+- [x] Deploy to Railway (pushed to GitHub, auto-deploys)

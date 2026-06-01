@@ -583,7 +583,7 @@ export default function CreatorEdit() {
             <div>
               <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wide">Demo Clip (max 30s)</p>
               {demoVideo && (
-                <div className="relative w-full aspect-[9/16] bg-black rounded-2xl overflow-hidden mb-4">
+                <div className="relative w-full bg-black rounded-2xl overflow-hidden mb-4" style={{ maxHeight: '825px', aspectRatio: '9/16' }}>
                   {thumbnailDataUrl ? (
                     <img src={thumbnailDataUrl} className="w-full h-full object-cover" alt="Demo preview" />
                   ) : (
@@ -658,7 +658,7 @@ export default function CreatorEdit() {
             <div>
               <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wide">Full Tutorial (max 5 min)</p>
               {tutorialVideo && (
-                <div className="relative w-full aspect-[9/16] bg-black rounded-2xl overflow-hidden mb-4">
+                <div className="relative w-full bg-black rounded-2xl overflow-hidden mb-4" style={{ maxHeight: '825px', aspectRatio: '9/16' }}>
                   {tutorialThumbnailDataUrl ? (
                     <img src={tutorialThumbnailDataUrl} className="w-full h-full object-cover" alt="Tutorial preview" />
                   ) : thumbnailDataUrl ? (
@@ -732,89 +732,216 @@ export default function CreatorEdit() {
         {/* ── Step 4: Chapters ─────────────────────────────────────── */}
         {step === "chapters" && tutorialVideo && (
           <div className="space-y-4">
-            <div className="bg-card rounded-2xl p-4 border border-border">
+            <p className="text-xs text-muted-foreground">
+              Play the tutorial and tap <strong className="text-foreground">Add Step Here</strong> at each key moment. Drag markers to fine-tune positions.
+            </p>
+
+            {/* Video player with custom controls */}
+            <div className="relative w-full rounded-2xl overflow-hidden bg-black" style={{ aspectRatio: '9/16', maxHeight: '40vh' }}>
               <video
                 ref={tutorialVideoRef}
-                src={tutorialVideo.localUrl}
+                src={tutorialVideo.localUrl || tutorialVideo.url}
                 poster={tutorialThumbnailDataUrl || thumbnailDataUrl || undefined}
-                className="w-full rounded-xl mb-4"
-                controls
+                className="w-full h-full object-contain"
+                playsInline
                 preload="auto"
-                onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
-                onDurationChange={(e) => setDuration(e.currentTarget.duration)}
+                onTimeUpdate={() => setCurrentTime(tutorialVideoRef.current?.currentTime ?? 0)}
+                onLoadedMetadata={() => setDuration(tutorialVideoRef.current?.duration ?? 0)}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
+                onError={() => {
+                  const vid = tutorialVideoRef.current;
+                  if (vid && tutorialVideo.localUrl && vid.src !== tutorialVideo.url) {
+                    vid.src = tutorialVideo.url;
+                    vid.load();
+                  }
+                }}
               />
-
-              <div className="space-y-3">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Chapter name..."
-                    value={newChapterLabel}
-                    onChange={(e) => setNewChapterLabel(e.target.value)}
-                    className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
-                  />
-                  <Button
-                    onClick={addChapterAtCurrentTime}
-                    size="sm"
-                    className="gap-1"
-                  >
-                    <Plus size={14} /> Add
-                  </Button>
-                </div>
-
-                <div className="space-y-2 max-h-64 overflow-y-auto" ref={chapterListRef}>
-                  {chapters.map((ch, idx) => (
+              {/* Chapter markers on scrubber */}
+              <div className="absolute bottom-0 left-0 right-0 px-3 pb-3 space-y-2">
+                <div 
+                  className="relative h-2 bg-white/20 rounded-full cursor-pointer hover:h-3 transition-all"
+                  onClick={(e) => {
+                    if (!tutorialVideoRef.current || duration === 0) return;
+                    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                    const newTime = (e.clientX - rect.left) / rect.width * duration;
+                    tutorialVideoRef.current.currentTime = newTime;
+                  }}
+                  onMouseDown={(e) => {
+                    if (!tutorialVideoRef.current || duration === 0) return;
+                    const handleMouseMove = (moveEvent: MouseEvent) => {
+                      const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                      const newTime = (moveEvent.clientX - rect.left) / rect.width * duration;
+                      tutorialVideoRef.current!.currentTime = Math.max(0, Math.min(newTime, duration));
+                    };
+                    const handleMouseUp = () => {
+                      document.removeEventListener('mousemove', handleMouseMove);
+                      document.removeEventListener('mouseup', handleMouseUp);
+                    };
+                    document.addEventListener('mousemove', handleMouseMove);
+                    document.addEventListener('mouseup', handleMouseUp);
+                  }}
+                >
+                  {duration > 0 && chapters.map(c => {
+                    const isSelected = selectedChapterId === c.id;
+                    const isDragging = draggingChapterId === c.id;
+                    const isNew = newlyAddedChapterId === c.id;
+                    return (
                     <div
-                      key={ch.id}
-                      id={`chapter-edit-${ch.id}`}
-                      className={`flex items-center gap-2 p-2 rounded-lg transition-all duration-300 cursor-pointer ${
-                        selectedChapterId === ch.id
-                          ? 'bg-primary/15 border-2 border-primary/50 shadow-[0_0_8px_oklch(0.65_0.30_340/0.3)]'
-                          : 'bg-background border border-border/50 hover:border-primary/30'
-                      } ${newlyAddedChapterId === ch.id ? 'animate-[highlight-flash_1.5s_ease-out]' : ''}`}
-                      onClick={() => setSelectedChapterId(selectedChapterId === ch.id ? null : ch.id)}
-                    >
-                      <div className="flex-1 min-w-0">
-                        {editingChapterId === ch.id ? (
-                          <input
-                            autoFocus
-                            type="text"
-                            value={editingLabel}
-                            onChange={(e) => setEditingLabel(e.target.value)}
-                            onBlur={() => saveEditChapter(ch.id)}
-                            onKeyDown={(e) => e.key === "Enter" && saveEditChapter(ch.id)}
-                            className="w-full bg-card border border-border rounded px-2 py-1 text-xs text-foreground focus:outline-none"
-                          />
-                        ) : (
-                          <div
-                            onClick={() => startEditChapter(ch.id, ch.label)}
-                            className="cursor-pointer text-xs font-medium text-foreground truncate"
-                          >
-                            {ch.label}
-                          </div>
-                        )}
-                        <div className="text-xs text-muted-foreground">{formatTime(ch.time)}</div>
-                      </div>
-                      <button
-                        onClick={() => jumpToChapter(ch.time)}
-                        className="p-1 hover:bg-card rounded"
-                      >
-                        <Play size={12} className="text-primary" />
-                      </button>
-
-                      <button
-                        onClick={() => deleteChapter(ch.id)}
-                        className="p-1 hover:bg-red-500/20 rounded text-red-500"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  ))}
+                      key={c.id}
+                      className={`absolute top-1/2 -translate-y-1/2 rounded-full border-2 cursor-grab active:cursor-grabbing z-10 transition-all ${
+                        isDragging ? 'w-5 h-5 bg-primary border-white shadow-lg scale-110' :
+                        isSelected ? 'w-4.5 h-4.5 bg-primary border-yellow-400 shadow-[0_0_8px_oklch(0.65_0.30_340)]' :
+                        'w-3.5 h-3.5 bg-primary border-white hover:w-4 hover:h-4'
+                      } ${isNew ? 'animate-pulse' : ''}`}
+                      style={{ left: `${(c.time / duration) * 100}%`, transform: 'translate(-50%, -50%)' }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setDraggingChapterId(c.id);
+                        const track = e.currentTarget.parentElement!;
+                        const onMove = (ev: MouseEvent) => handleChapterDrag(c.id, ev.clientX, track);
+                        const onUp = () => { setDraggingChapterId(null); document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+                        document.addEventListener('mousemove', onMove);
+                        document.addEventListener('mouseup', onUp);
+                      }}
+                      onTouchStart={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setDraggingChapterId(c.id);
+                        const track = e.currentTarget.parentElement!;
+                        const onMove = (ev: TouchEvent) => handleChapterDrag(c.id, ev.touches[0].clientX, track);
+                        const onEnd = () => { setDraggingChapterId(null); document.removeEventListener('touchmove', onMove); document.removeEventListener('touchend', onEnd); };
+                        document.addEventListener('touchmove', onMove);
+                        document.addEventListener('touchend', onEnd);
+                      }}
+                    />
+                    );
+                  })}
+                  <div className="h-full rounded-full bg-primary" style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }} />
+                  {/* Draggable scrubber handle */}
+                  {duration > 0 && (
+                    <div
+                      className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-6 h-6 rounded-full bg-white border-2 border-primary cursor-grab active:cursor-grabbing shadow-lg hover:w-7 hover:h-7 transition-all"
+                      style={{ left: `${(currentTime / duration) * 100}%` }}
+                      onMouseDown={(e) => {
+                        if (!tutorialVideoRef.current || duration === 0) return;
+                        e.preventDefault();
+                        const parentRect = (e.currentTarget as HTMLDivElement).parentElement?.getBoundingClientRect();
+                        if (!parentRect) return;
+                        const handleMouseMove = (moveEvent: MouseEvent) => {
+                          const newTime = Math.max(0, Math.min((moveEvent.clientX - parentRect.left) / parentRect.width * duration, duration));
+                          tutorialVideoRef.current!.currentTime = newTime;
+                        };
+                        const handleMouseUp = () => {
+                          document.removeEventListener('mousemove', handleMouseMove);
+                          document.removeEventListener('mouseup', handleMouseUp);
+                        };
+                        document.addEventListener('mousemove', handleMouseMove);
+                        document.addEventListener('mouseup', handleMouseUp);
+                      }}
+                      onTouchStart={(e) => {
+                        if (!tutorialVideoRef.current || duration === 0) return;
+                        e.preventDefault();
+                        const parentRect = (e.currentTarget as HTMLDivElement).parentElement?.getBoundingClientRect();
+                        if (!parentRect) return;
+                        const handleTouchMove = (moveEvent: TouchEvent) => {
+                          const newTime = Math.max(0, Math.min((moveEvent.touches[0].clientX - parentRect.left) / parentRect.width * duration, duration));
+                          tutorialVideoRef.current!.currentTime = newTime;
+                        };
+                        const handleTouchEnd = () => {
+                          document.removeEventListener('touchmove', handleTouchMove);
+                          document.removeEventListener('touchend', handleTouchEnd);
+                        };
+                        document.addEventListener('touchmove', handleTouchMove);
+                        document.addEventListener('touchend', handleTouchEnd);
+                      }}
+                    />
+                  )}
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-white/60 text-xs">{formatTime(currentTime)}</span>
+                  <button
+                    onClick={() => {
+                      if (tutorialVideoRef.current) {
+                        if (isPlaying) tutorialVideoRef.current.pause();
+                        else tutorialVideoRef.current.play();
+                      }
+                    }}
+                    className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center"
+                  >
+                    {isPlaying ? <Pause size={16} className="text-white" /> : <Play size={16} className="text-white" />}
+                  </button>
+                  <span className="text-white/60 text-xs">{formatTime(duration)}</span>
                 </div>
               </div>
             </div>
+
+            {/* Add chapter */}
+            <div className="flex gap-2">
+              <input
+                className="flex-1 bg-card border border-border rounded-xl px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                placeholder={`Step ${chapters.length + 1} label…`}
+                value={newChapterLabel}
+                onChange={e => setNewChapterLabel(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') addChapterAtCurrentTime(); }}
+              />
+              <button
+                onClick={addChapterAtCurrentTime}
+                className="px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-1.5"
+                style={{ background: 'linear-gradient(135deg, oklch(0.65 0.30 340), oklch(0.55 0.28 15))', color: 'white' }}
+              >
+                <Plus size={14} /> Add Step Here
+              </button>
+            </div>
+
+            {/* Chapter list */}
+            {chapters.length > 0 && (
+              <div className="space-y-2" ref={chapterListRef}>
+                {chapters.map((c) => (
+                  <div
+                    key={c.id}
+                    id={`chapter-edit-${c.id}`}
+                    className={`flex items-center gap-2 rounded-xl px-3 py-2.5 transition-all duration-300 cursor-pointer ${
+                      selectedChapterId === c.id
+                        ? 'bg-primary/15 border-2 border-primary/50 shadow-[0_0_8px_oklch(0.65_0.30_340/0.3)]'
+                        : 'bg-card border border-border hover:border-primary/30'
+                    } ${newlyAddedChapterId === c.id ? 'animate-[highlight-flash_1.5s_ease-out]' : ''}`}
+                    onClick={() => setSelectedChapterId(selectedChapterId === c.id ? null : c.id)}
+                  >
+                    <button onClick={(e) => { e.stopPropagation(); jumpToChapter(c.time); }}
+                      className="text-xs font-mono text-primary bg-primary/10 rounded-lg px-2 py-1 shrink-0">
+                      {formatTime(c.time)}
+                    </button>
+                    { editingChapterId === c.id ? (
+                      <input
+                        autoFocus
+                        type="text"
+                        value={editingLabel}
+                        onChange={e => setEditingLabel(e.target.value)}
+                        onBlur={() => saveEditChapter(c.id)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') saveEditChapter(c.id);
+                          if (e.key === 'Escape') setEditingChapterId(null);
+                        }}
+                        className="text-sm text-foreground flex-1 bg-background border border-primary rounded px-2 py-1"
+                      />
+                    ) : (
+                      <span 
+                        onClick={() => startEditChapter(c.id, c.label)}
+                        className="text-sm text-foreground flex-1 truncate cursor-pointer hover:text-primary transition-colors"
+                      >
+                        {c.label}
+                      </span>
+                    )}
+                    <button onClick={() => deleteChapter(c.id)}
+                      className="w-6 h-6 rounded flex items-center justify-center text-destructive shrink-0">
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className="flex gap-3 pt-4">
               <Button
@@ -828,7 +955,7 @@ export default function CreatorEdit() {
                 onClick={() => setStep("preview")}
                 className="flex-1"
               >
-                Next
+                {chapters.length === 0 ? "Skip Chapters & Preview" : `Preview (${chapters.length} chapter${chapters.length > 1 ? 's' : ''})`}
               </Button>
             </div>
           </div>
