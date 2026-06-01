@@ -5,7 +5,7 @@ import { formatTime } from "@/lib/utils";
 import { compressVideo, isCompressionSupported, shouldCompress } from "@/lib/videoCompressor";
 import {
   CheckCircle,
-  ChevronUp,
+  ChevronLeft,
   Loader2,
   Pause,
   Play,
@@ -14,7 +14,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useParams } from "wouter";
 import { toast } from "sonner";
@@ -373,17 +373,21 @@ export default function CreatorEdit() {
     setEditingChapterId(null);
   };
 
-  const moveChapter = (id: string, dir: -1 | 1) => {
-    setChapters(prev => {
-      const idx = prev.findIndex(c => c.id === id);
-      if (idx < 0) return prev;
-      const next = idx + dir;
-      if (next < 0 || next >= prev.length) return prev;
-      const arr = [...prev];
-      [arr[idx], arr[next]] = [arr[next], arr[idx]];
-      return arr;
-    });
-  };
+  // Drag a chapter marker on the timeline to reposition it
+  const handleChapterDrag = useCallback((chapterId: string, clientX: number, trackEl: HTMLElement) => {
+    if (!trackEl || duration === 0) return;
+    const rect = trackEl.getBoundingClientRect();
+    let newTime = Math.max(0, Math.min(((clientX - rect.left) / rect.width) * duration, duration));
+    // Constrain to not overlap adjacent markers (minimum 1s gap)
+    const sorted = [...chapters].sort((a, b) => a.time - b.time);
+    const idx = sorted.findIndex(c => c.id === chapterId);
+    const minTime = idx > 0 ? sorted[idx - 1].time + 1 : 0;
+    const maxTime = idx < sorted.length - 1 ? sorted[idx + 1].time - 1 : duration;
+    newTime = Math.max(minTime, Math.min(newTime, maxTime));
+    setChapters(prev => prev.map(c => c.id === chapterId ? { ...c, time: newTime } : c).sort((a, b) => a.time - b.time));
+    // Also seek video to the new position
+    if (tutorialVideoRef.current) tutorialVideoRef.current.currentTime = newTime;
+  }, [chapters, duration]);
 
   const jumpToChapter = (time: number) => {
     if (tutorialVideoRef.current) {
@@ -435,7 +439,7 @@ export default function CreatorEdit() {
               }} 
               className="w-8 h-8 rounded-full bg-card flex items-center justify-center hover:bg-card/80 transition-colors"
             >
-              <ChevronUp size={16} className="text-muted-foreground rotate-[-90deg]" />
+              <ChevronLeft size={16} className="text-muted-foreground" />
             </button>
             <div>
               <h1 className="text-base font-bold text-foreground">Edit Tutorial</h1>
@@ -752,20 +756,7 @@ export default function CreatorEdit() {
                       >
                         <Play size={12} className="text-primary" />
                       </button>
-                      <button
-                        onClick={() => moveChapter(ch.id, -1)}
-                        disabled={idx === 0}
-                        className="p-1 hover:bg-card rounded disabled:opacity-50"
-                      >
-                        <ChevronUp size={12} />
-                      </button>
-                      <button
-                        onClick={() => moveChapter(ch.id, 1)}
-                        disabled={idx === chapters.length - 1}
-                        className="p-1 hover:bg-card rounded disabled:opacity-50"
-                      >
-                        <ChevronUp size={12} className="rotate-180" />
-                      </button>
+
                       <button
                         onClick={() => deleteChapter(ch.id)}
                         className="p-1 hover:bg-red-500/20 rounded text-red-500"

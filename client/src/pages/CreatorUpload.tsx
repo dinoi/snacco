@@ -6,7 +6,7 @@ import { formatTime } from "@/lib/utils";
 import { compressVideo, isCompressionSupported, shouldCompress } from "@/lib/videoCompressor";
 import {
   CheckCircle,
-  ChevronUp,
+  ChevronLeft,
   Loader2,
   Pause,
   Play,
@@ -14,7 +14,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { VersionBadge } from "@/components/VersionBadge";
@@ -175,6 +175,7 @@ export default function CreatorUpload() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [draggingChapterId, setDraggingChapterId] = useState<string | null>(null);
 
   const tutorialVideoRef = useRef<HTMLVideoElement>(null);
   const demoInputRef = useRef<HTMLInputElement>(null);
@@ -376,17 +377,21 @@ export default function CreatorUpload() {
     setEditingChapterId(null);
   };
 
-  const moveChapter = (id: string, dir: -1 | 1) => {
-    setChapters(prev => {
-      const idx = prev.findIndex(c => c.id === id);
-      if (idx < 0) return prev;
-      const next = idx + dir;
-      if (next < 0 || next >= prev.length) return prev;
-      const arr = [...prev];
-      [arr[idx], arr[next]] = [arr[next], arr[idx]];
-      return arr;
-    });
-  };
+  // Drag a chapter marker on the timeline to reposition it
+  const handleChapterDrag = useCallback((chapterId: string, clientX: number, trackEl: HTMLElement) => {
+    if (!trackEl || duration === 0) return;
+    const rect = trackEl.getBoundingClientRect();
+    let newTime = Math.max(0, Math.min(((clientX - rect.left) / rect.width) * duration, duration));
+    // Constrain to not overlap adjacent markers (minimum 1s gap)
+    const sorted = [...chapters].sort((a, b) => a.time - b.time);
+    const idx = sorted.findIndex(c => c.id === chapterId);
+    const minTime = idx > 0 ? sorted[idx - 1].time + 1 : 0;
+    const maxTime = idx < sorted.length - 1 ? sorted[idx + 1].time - 1 : duration;
+    newTime = Math.max(minTime, Math.min(newTime, maxTime));
+    setChapters(prev => prev.map(c => c.id === chapterId ? { ...c, time: newTime } : c).sort((a, b) => a.time - b.time));
+    // Also seek video to the new position
+    if (tutorialVideoRef.current) tutorialVideoRef.current.currentTime = newTime;
+  }, [chapters, duration]);
 
   const jumpToChapter = (time: number) => {
     if (tutorialVideoRef.current) {
@@ -479,7 +484,7 @@ export default function CreatorUpload() {
               }} 
               className="w-8 h-8 rounded-full bg-card flex items-center justify-center hover:bg-card/80 transition-colors"
             >
-              <ChevronUp size={16} className="text-muted-foreground rotate-[-90deg]" />
+              <ChevronLeft size={16} className="text-muted-foreground" />
             </button>
             <div>
               <h1 className="text-base font-bold text-foreground">Upload Tutorial</h1>
@@ -842,8 +847,28 @@ export default function CreatorUpload() {
                   {duration > 0 && chapters.map(c => (
                     <div
                       key={c.id}
-                      className="absolute top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-primary border border-white"
-                      style={{ left: `${(c.time / duration) * 100}%` }}
+                      className={`absolute top-1/2 -translate-y-1/2 rounded-full border-2 border-white cursor-grab active:cursor-grabbing z-10 transition-all ${draggingChapterId === c.id ? 'w-5 h-5 bg-primary shadow-lg scale-110' : 'w-3.5 h-3.5 bg-primary hover:w-4 hover:h-4'}`}
+                      style={{ left: `${(c.time / duration) * 100}%`, transform: 'translate(-50%, -50%)' }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setDraggingChapterId(c.id);
+                        const track = e.currentTarget.parentElement!;
+                        const onMove = (ev: MouseEvent) => handleChapterDrag(c.id, ev.clientX, track);
+                        const onUp = () => { setDraggingChapterId(null); document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+                        document.addEventListener('mousemove', onMove);
+                        document.addEventListener('mouseup', onUp);
+                      }}
+                      onTouchStart={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setDraggingChapterId(c.id);
+                        const track = e.currentTarget.parentElement!;
+                        const onMove = (ev: TouchEvent) => handleChapterDrag(c.id, ev.touches[0].clientX, track);
+                        const onEnd = () => { setDraggingChapterId(null); document.removeEventListener('touchmove', onMove); document.removeEventListener('touchend', onEnd); };
+                        document.addEventListener('touchmove', onMove);
+                        document.addEventListener('touchend', onEnd);
+                      }}
                     />
                   ))}
                   <div className="h-full rounded-full bg-primary" style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }} />
@@ -953,20 +978,10 @@ export default function CreatorUpload() {
                             {c.label}
                           </span>
                           )}
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button onClick={() => moveChapter(c.id, -1)} disabled={idx === 0}
-                        className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground disabled:opacity-30">
-                        <ChevronUp size={12} />
-                      </button>
-                      <button onClick={() => moveChapter(c.id, 1)} disabled={idx === chapters.length - 1}
-                        className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground disabled:opacity-30">
-                        <ChevronUp size={12} className="rotate-180" />
-                      </button>
-                      <button onClick={() => deleteChapter(c.id)}
-                        className="w-6 h-6 rounded flex items-center justify-center text-destructive">
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
+                    <button onClick={() => deleteChapter(c.id)}
+                      className="w-6 h-6 rounded flex items-center justify-center text-destructive shrink-0">
+                      <Trash2 size={12} />
+                    </button>
                   </div>
                 ))}
               </div>

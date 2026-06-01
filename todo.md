@@ -276,5 +276,12 @@
 - [x] Fix truncated/single-frame output videos
 - [x] Reliable progress reporting via Mediabunny conversion progress callback
 - [x] Fallback to improved MediaRecorder approach if WebCodecs unavailable
-- [ ] Test on mobile (iPhone Safari) - hero use case (needs user testing)
+- [x] Test on mobile (iPhone Safari) - hero use case (confirmed working by user)
 - [x] Version badge bumped to v1.72
+
+## v1.73 - Chapter Marker UX Fixes
+- [x] Remove chapter reordering from the chapter list in CreatorUpload
+- [x] Add draggable markers on the timeline for fine-tuning chapter positions (constrained by adjacent markers)
+- [x] Restore chapter selectors in Player.tsx (disappeared in latest build)
+- [x] Version badge bumped to v1.73
+- [ ] Deploy to Railway (pending push)

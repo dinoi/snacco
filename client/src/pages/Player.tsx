@@ -160,12 +160,12 @@ export default function Player() {
       className="min-h-dvh bg-black flex flex-col"
       onClick={resetHideTimer}
     >
-      {/* Video */}
-      <div className="relative flex-1 flex flex-col min-h-0" style={{ minHeight: '60dvh' }}>
+      {/* Video area */}
+      <div className="relative flex-1 flex flex-col min-h-0" style={{ minHeight: '55dvh' }}>
         <video
           ref={videoRef}
           src={tutorial?.tutorialVideoUrl}
-          poster={tutorial?.tutorialThumbnailUrl || tutorial?.thumbnailUrl || undefined}
+          poster={tutorial?.thumbnailUrl || undefined}
           className="w-full flex-1 object-contain min-h-0"
           playsInline
           preload="auto"
@@ -191,7 +191,7 @@ export default function Player() {
           </div>
         )}
 
-        {/* Controls overlay */}
+        {/* Controls overlay (auto-hides) */}
         <div
           className={cn(
             "absolute inset-0 flex flex-col justify-between transition-opacity duration-300",
@@ -267,9 +267,8 @@ export default function Player() {
             <div className="w-14 h-14" /> {/* spacer */}
           </div>
 
-          {/* Bottom: progress + chapter nav */}
-          <div className="px-4 pb-6 safe-bottom bg-gradient-to-t from-black/80 to-transparent pt-10 space-y-3">
-            {/* Progress bar */}
+          {/* Bottom: progress bar (inside auto-hide overlay) */}
+          <div className="px-4 pb-4 bg-gradient-to-t from-black/80 to-transparent pt-10">
             <div className="space-y-1">
               <div
                 ref={progressBarRef}
@@ -314,47 +313,49 @@ export default function Player() {
                 <span>{formatTime(duration)}</span>
               </div>
             </div>
-
-            {/* Chapter navigation */}
-            {chapters && chapters.length > 0 && (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={(e) => { e.stopPropagation(); prevChapter(); }}
-                  disabled={activeChapter === 0}
-                  className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center disabled:opacity-30 hover:bg-white/20 transition-colors"
-                >
-                  <ChevronLeft size={20} className="text-white" />
-                </button>
-                <div className="flex-1 overflow-x-auto hide-scrollbar">
-                  <div className="flex gap-2 min-w-max">
-                    {chapters.map((ch, i) => (
-                      <button
-                        key={ch.id}
-                        onClick={(e) => { e.stopPropagation(); goToChapter(i); }}
-                        className={cn(
-                          "px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all",
-                          i === activeChapter
-                            ? "bg-primary text-primary-foreground glow-pink"
-                            : "bg-white/10 text-white/70 hover:bg-white/20"
-                        )}
-                      >
-                        {ch.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <button
-                  onClick={(e) => { e.stopPropagation(); nextChapter(); }}
-                  disabled={activeChapter === (chapters.length - 1)}
-                  className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center disabled:opacity-30 hover:bg-white/20 transition-colors"
-                >
-                  <ChevronRight size={20} className="text-white" />
-                </button>
-              </div>
-            )}
           </div>
         </div>
       </div>
+
+      {/* Chapter selectors - ALWAYS visible, outside the auto-hiding overlay */}
+      {chapters && chapters.length > 0 && (
+        <div className="px-4 py-3 pb-24 bg-black/95 border-t border-white/10">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={(e) => { e.stopPropagation(); prevChapter(); }}
+              disabled={activeChapter === 0}
+              className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center disabled:opacity-30 hover:bg-white/20 transition-colors shrink-0"
+            >
+              <ChevronLeft size={18} className="text-white" />
+            </button>
+            <div className="flex-1 overflow-x-auto hide-scrollbar">
+              <div className="flex gap-2 min-w-max">
+                {chapters.map((ch, i) => (
+                  <button
+                    key={ch.id}
+                    onClick={(e) => { e.stopPropagation(); goToChapter(i); }}
+                    className={cn(
+                      "px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all",
+                      i === activeChapter
+                        ? "bg-primary text-primary-foreground glow-pink"
+                        : "bg-white/10 text-white/70 hover:bg-white/20"
+                    )}
+                  >
+                    {ch.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <button
+              onClick={(e) => { e.stopPropagation(); nextChapter(); }}
+              disabled={activeChapter === (chapters.length - 1)}
+              className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center disabled:opacity-30 hover:bg-white/20 transition-colors shrink-0"
+            >
+              <ChevronRight size={18} className="text-white" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
