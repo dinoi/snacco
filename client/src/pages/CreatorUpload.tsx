@@ -176,6 +176,9 @@ export default function CreatorUpload() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [draggingChapterId, setDraggingChapterId] = useState<string | null>(null);
+  const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
+  const [newlyAddedChapterId, setNewlyAddedChapterId] = useState<string | null>(null);
+  const chapterListRef = useRef<HTMLDivElement>(null);
 
   const tutorialVideoRef = useRef<HTMLVideoElement>(null);
   const demoInputRef = useRef<HTMLInputElement>(null);
@@ -363,8 +366,18 @@ export default function CreatorUpload() {
   // ── Chapter helpers ────────────────────────────────────────────────
   const addChapterAtCurrentTime = () => {
     const label = newChapterLabel.trim() || `Step ${chapters.length + 1}`;
-    setChapters(prev => [...prev, { id: crypto.randomUUID(), time: currentTime, label }].sort((a, b) => a.time - b.time));
+    const newId = crypto.randomUUID();
+    setChapters(prev => [...prev, { id: newId, time: currentTime, label }].sort((a, b) => a.time - b.time));
     setNewChapterLabel("");
+    setSelectedChapterId(newId);
+    setNewlyAddedChapterId(newId);
+    // Clear the "newly added" highlight after animation completes
+    setTimeout(() => setNewlyAddedChapterId(null), 1500);
+    // Auto-scroll to the new chapter after React re-renders
+    setTimeout(() => {
+      const el = document.getElementById(`chapter-${newId}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 50);
   };
 
   const deleteChapter = (id: string) => setChapters(prev => prev.filter(c => c.id !== id));
@@ -389,8 +402,7 @@ export default function CreatorUpload() {
     const maxTime = idx < sorted.length - 1 ? sorted[idx + 1].time - 1 : duration;
     newTime = Math.max(minTime, Math.min(newTime, maxTime));
     setChapters(prev => prev.map(c => c.id === chapterId ? { ...c, time: newTime } : c).sort((a, b) => a.time - b.time));
-    // Also seek video to the new position
-    if (tutorialVideoRef.current) tutorialVideoRef.current.currentTime = newTime;
+    // Do NOT seek video — marker drag is decoupled from playhead
   }, [chapters, duration]);
 
   const jumpToChapter = (time: number) => {
@@ -844,10 +856,18 @@ export default function CreatorUpload() {
                     document.addEventListener('mouseup', handleMouseUp);
                   }}
                 >
-                  {duration > 0 && chapters.map(c => (
+                  {duration > 0 && chapters.map(c => {
+                    const isSelected = selectedChapterId === c.id;
+                    const isDragging = draggingChapterId === c.id;
+                    const isNew = newlyAddedChapterId === c.id;
+                    return (
                     <div
                       key={c.id}
-                      className={`absolute top-1/2 -translate-y-1/2 rounded-full border-2 border-white cursor-grab active:cursor-grabbing z-10 transition-all ${draggingChapterId === c.id ? 'w-5 h-5 bg-primary shadow-lg scale-110' : 'w-3.5 h-3.5 bg-primary hover:w-4 hover:h-4'}`}
+                      className={`absolute top-1/2 -translate-y-1/2 rounded-full border-2 cursor-grab active:cursor-grabbing z-10 transition-all ${
+                        isDragging ? 'w-5 h-5 bg-primary border-white shadow-lg scale-110' :
+                        isSelected ? 'w-4.5 h-4.5 bg-primary border-yellow-400 shadow-[0_0_8px_oklch(0.65_0.30_340)]' :
+                        'w-3.5 h-3.5 bg-primary border-white hover:w-4 hover:h-4'
+                      } ${isNew ? 'animate-pulse' : ''}`}
                       style={{ left: `${(c.time / duration) * 100}%`, transform: 'translate(-50%, -50%)' }}
                       onMouseDown={(e) => {
                         e.preventDefault();
@@ -870,7 +890,8 @@ export default function CreatorUpload() {
                         document.addEventListener('touchend', onEnd);
                       }}
                     />
-                  ))}
+                    );
+                  })}
                   <div className="h-full rounded-full bg-primary" style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }} />
                   {/* Draggable scrubber handle */}
                   {duration > 0 && (
@@ -950,10 +971,19 @@ export default function CreatorUpload() {
 
             {/* Chapter list */}
             {chapters.length > 0 && (
-              <div className="space-y-2">
+              <div className="space-y-2" ref={chapterListRef}>
                 {chapters.map((c, idx) => (
-                  <div key={c.id} className="flex items-center gap-2 bg-card border border-border rounded-xl px-3 py-2.5">
-                    <button onClick={() => jumpToChapter(c.time)}
+                  <div
+                    key={c.id}
+                    id={`chapter-${c.id}`}
+                    className={`flex items-center gap-2 rounded-xl px-3 py-2.5 transition-all duration-300 cursor-pointer ${
+                      selectedChapterId === c.id
+                        ? 'bg-primary/15 border-2 border-primary/50 shadow-[0_0_8px_oklch(0.65_0.30_340/0.3)]'
+                        : 'bg-card border border-border hover:border-primary/30'
+                    } ${newlyAddedChapterId === c.id ? 'animate-[highlight-flash_1.5s_ease-out]' : ''}`}
+                    onClick={() => setSelectedChapterId(selectedChapterId === c.id ? null : c.id)}
+                  >
+                    <button onClick={(e) => { e.stopPropagation(); jumpToChapter(c.time); }}
                       className="text-xs font-mono text-primary bg-primary/10 rounded-lg px-2 py-1 shrink-0">
                       {formatTime(c.time)}
                     </button>

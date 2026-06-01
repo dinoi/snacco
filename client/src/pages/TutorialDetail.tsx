@@ -110,7 +110,7 @@ export default function TutorialDetail() {
         <div className="absolute bottom-0 left-0 right-0 h-[55%] bg-gradient-to-t from-black/95 via-black/60 to-transparent z-10" />
 
         {/* Overlay content — positioned just above the bottom tab bar */}
-        <div className="absolute left-0 right-0 z-20 px-4 pb-2" style={{ bottom: '5rem' }}>
+        <div className="absolute left-0 right-0 bottom-0 z-20 px-4 pb-[calc(env(safe-area-inset-bottom)+5rem)]">
           {/* Title and genre */}
           <h1 className="text-xl font-black text-white leading-tight">{tutorial.title}</h1>
           <p className="text-white/50 text-xs mt-1">

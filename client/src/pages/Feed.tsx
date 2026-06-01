@@ -163,11 +163,11 @@ function FeedCard({
 
 
 
-      {/* Bottom gradient */}
-      <div className="absolute bottom-0 left-0 right-0 h-72 bg-gradient-to-t from-black/95 via-black/60 to-transparent z-10" />
+      {/* Bottom gradient — extends to cover tab bar area */}
+      <div className="absolute bottom-0 left-0 right-0 h-80 bg-gradient-to-t from-black/95 via-black/60 to-transparent z-10" />
 
-      {/* Bottom info overlay */}
-      <div className="absolute left-0 right-0 z-20 px-4 pb-2" style={{ bottom: "5rem" }}>
+      {/* Bottom info overlay — positioned just above MobileNav tab bar */}
+      <div className="absolute left-0 right-0 bottom-0 z-20 px-4 pb-[calc(env(safe-area-inset-bottom)+5rem)]">
         <div className="flex items-start justify-between gap-2 mb-3">
           <div className="flex-1 min-w-0">
             <h3 className="font-bold text-white text-lg leading-tight truncate">

@@ -289,4 +289,17 @@
 ## v1.74 - CreatorEdit Bug Fix + Data Reset
 - [x] Fix React error #310 in CreatorEdit.tsx (useCallback hooks order issue from v1.73 draggable markers)
 - [x] Delete all tutorials from database for fresh start
-- [ ] Deploy fix to Railway (pending push)
+- [x] Deploy fix to Railway (pushed to GitHub, auto-deploys)
+
+## v1.75 - UI Tweaks Batch
+- [x] Feed page: move text/CTA overlay lower, dynamically positioned just above tab bar (~20px gap)
+- [x] Unlock page: same dynamic overlay positioning as feed page
+- [x] Player.tsx: overhaul tutorial playback layout per mockup (top bar with back/title/speed, controls overlaid on video bottom, chapters in horizontal scroll row above tab bar)
+- [x] Player.tsx: show video first frame instead of thumbnail on load
+- [x] Chapter marking: selecting chapter in list highlights its marker on timeline
+- [x] Chapter marking: dragging marker does NOT move video playhead (decouple marker drag from seek)
+- [x] Chapter marking: auto-scroll list to newly added chapter
+- [x] Chapter marking: flash/highlight animation on new chapter row
+- [x] Chapter marking: pulse animation on new timeline marker
+- [x] Version badge bumped to v1.75
+- [ ] Deploy to Railway (pending push)

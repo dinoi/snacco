@@ -156,17 +156,63 @@ export default function Player() {
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div
-      className="min-h-dvh bg-black flex flex-col"
-      onClick={resetHideTimer}
-    >
-      {/* Video area */}
-      <div className="relative flex-1 flex flex-col min-h-0" style={{ minHeight: '55dvh' }}>
+    <div className="h-dvh w-full bg-black flex flex-col overflow-hidden">
+      {/* ── Top bar ── always visible, outside video */}
+      <div className="shrink-0 flex items-center justify-between px-4 py-3 safe-top bg-black">
+        <button
+          onClick={() => navigate(`/tutorial/${tutorialId}`)}
+          className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center"
+        >
+          <ArrowLeft size={18} className="text-white" />
+        </button>
+        <div className="text-center flex-1 min-w-0 px-3">
+          <p className="text-white font-bold text-sm leading-tight truncate">{tutorial?.title}</p>
+          {chapters && chapters[activeChapter] && (
+            <p className="text-white/60 text-xs truncate">{chapters[activeChapter].label}</p>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <VersionBadge />
+          {/* Speed button */}
+          <div className="relative">
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowSpeedMenu(!showSpeedMenu); resetHideTimer(); }}
+              className="flex items-center gap-1 bg-white/10 rounded-full px-3 py-1.5 border border-white/20"
+            >
+              <Gauge size={14} className="text-primary" />
+              <span className="text-white text-xs font-bold">{speed}x</span>
+            </button>
+            {showSpeedMenu && (
+              <div className="absolute right-0 top-10 bg-card border border-border rounded-xl overflow-hidden shadow-xl z-50 min-w-[80px]">
+                {SPEED_OPTIONS.map((s) => (
+                  <button
+                    key={s}
+                    onClick={(e) => { e.stopPropagation(); setPlaybackSpeed(s); }}
+                    className={cn(
+                      "w-full px-4 py-2.5 text-sm font-semibold text-left transition-colors",
+                      s === speed
+                        ? "bg-primary text-primary-foreground"
+                        : "text-foreground hover:bg-accent"
+                    )}
+                  >
+                    {s}x
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Video area ── fills remaining space between top bar and bottom controls */}
+      <div
+        className="relative flex-1 min-h-0"
+        onClick={resetHideTimer}
+      >
         <video
           ref={videoRef}
           src={tutorial?.tutorialVideoUrl}
-          poster={tutorial?.thumbnailUrl || undefined}
-          className="w-full flex-1 object-contain min-h-0"
+          className="absolute inset-0 w-full h-full object-contain"
           playsInline
           preload="auto"
           onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
@@ -191,84 +237,39 @@ export default function Player() {
           </div>
         )}
 
-        {/* Controls overlay (auto-hides) */}
+        {/* Play/Rewind controls — overlaid at bottom of video area */}
         <div
           className={cn(
-            "absolute inset-0 flex flex-col justify-between transition-opacity duration-300",
+            "absolute left-0 right-0 bottom-0 z-20 transition-opacity duration-300",
             showControls ? "opacity-100" : "opacity-0 pointer-events-none"
           )}
         >
-          {/* Top bar */}
-          <div className="flex items-center justify-between px-4 pt-4 safe-top bg-gradient-to-b from-black/70 to-transparent pb-8">
-            <button
-              onClick={() => navigate(`/tutorial/${tutorialId}`)}
-              className="w-9 h-9 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center"
-            >
-              <ArrowLeft size={18} className="text-white" />
-            </button>
-            <div className="text-center">
-              <p className="text-white font-bold text-sm leading-tight truncate max-w-[180px]">{tutorial?.title}</p>
-              {chapters && chapters[activeChapter] && (
-                <p className="text-white/60 text-xs">{chapters[activeChapter].label}</p>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <VersionBadge />
-              {/* Speed button */}
-              <div className="relative">
+          {/* Gradient backdrop for controls */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent pointer-events-none" />
+
+          <div className="relative px-4 pb-3 pt-16">
+            {/* Play + Rewind buttons */}
+            <div className="flex items-center justify-center gap-6 mb-3">
               <button
-                onClick={(e) => { e.stopPropagation(); setShowSpeedMenu(!showSpeedMenu); resetHideTimer(); }}
-                className="flex items-center gap-1 bg-black/50 backdrop-blur-sm rounded-full px-3 py-1.5 border border-white/20"
+                onClick={(e) => { e.stopPropagation(); rewind10(); }}
+                className="w-12 h-12 rounded-full bg-black/50 backdrop-blur-sm border border-white/20 flex flex-col items-center justify-center gap-0.5"
               >
-                <Gauge size={14} className="text-primary" />
-                <span className="text-white text-xs font-bold">{speed}x</span>
+                <RotateCcw size={18} className="text-white" />
+                <span className="text-white text-[8px] font-bold">10s</span>
               </button>
-              {showSpeedMenu && (
-                <div className="absolute right-0 top-10 bg-card border border-border rounded-xl overflow-hidden shadow-xl z-50 min-w-[80px]">
-                  {SPEED_OPTIONS.map((s) => (
-                    <button
-                      key={s}
-                      onClick={(e) => { e.stopPropagation(); setPlaybackSpeed(s); }}
-                      className={cn(
-                        "w-full px-4 py-2.5 text-sm font-semibold text-left transition-colors",
-                        s === speed
-                          ? "bg-primary text-primary-foreground"
-                          : "text-foreground hover:bg-accent"
-                      )}
-                    >
-                      {s}x
-                    </button>
-                  ))}
-                </div>
-              )}
-              </div>
+              <button
+                onClick={(e) => { e.stopPropagation(); togglePlay(); }}
+                className="w-16 h-16 rounded-full bg-primary/20 backdrop-blur-sm border-2 border-primary flex items-center justify-center glow-pink"
+              >
+                {isPlaying
+                  ? <Pause size={28} className="text-white" />
+                  : <Play size={28} className="text-white fill-white ml-1" />
+                }
+              </button>
+              <div className="w-12 h-12" /> {/* spacer for symmetry */}
             </div>
-          </div>
 
-          {/* Centre play/pause */}
-          <div className="flex items-center justify-center gap-8">
-            <button
-              onClick={(e) => { e.stopPropagation(); rewind10(); }}
-              className="w-14 h-14 rounded-full bg-black/50 backdrop-blur-sm border border-white/20 flex flex-col items-center justify-center gap-0.5"
-            >
-              <RotateCcw size={20} className="text-white" />
-              <span className="text-white text-[9px] font-bold">10s</span>
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); togglePlay(); }}
-              className="w-18 h-18 rounded-full bg-primary/20 backdrop-blur-sm border-2 border-primary flex items-center justify-center glow-pink"
-              style={{ width: 72, height: 72 }}
-            >
-              {isPlaying
-                ? <Pause size={32} className="text-white" />
-                : <Play size={32} className="text-white fill-white ml-1" />
-              }
-            </button>
-            <div className="w-14 h-14" /> {/* spacer */}
-          </div>
-
-          {/* Bottom: progress bar (inside auto-hide overlay) */}
-          <div className="px-4 pb-4 bg-gradient-to-t from-black/80 to-transparent pt-10">
+            {/* Progress bar */}
             <div className="space-y-1">
               <div
                 ref={progressBarRef}
@@ -317,16 +318,16 @@ export default function Player() {
         </div>
       </div>
 
-      {/* Chapter selectors - ALWAYS visible, outside the auto-hiding overlay */}
+      {/* ── Chapter selectors ── always visible, fixed above tab bar */}
       {chapters && chapters.length > 0 && (
-        <div className="px-4 py-3 pb-24 bg-black/95 border-t border-white/10">
+        <div className="shrink-0 px-3 py-2.5 bg-black border-t border-white/10 pb-[calc(env(safe-area-inset-bottom)+4.5rem)]">
           <div className="flex items-center gap-2">
             <button
               onClick={(e) => { e.stopPropagation(); prevChapter(); }}
               disabled={activeChapter === 0}
-              className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center disabled:opacity-30 hover:bg-white/20 transition-colors shrink-0"
+              className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center disabled:opacity-30 hover:bg-white/20 transition-colors shrink-0"
             >
-              <ChevronLeft size={18} className="text-white" />
+              <ChevronLeft size={16} className="text-white" />
             </button>
             <div className="flex-1 overflow-x-auto hide-scrollbar">
               <div className="flex gap-2 min-w-max">
@@ -349,9 +350,9 @@ export default function Player() {
             <button
               onClick={(e) => { e.stopPropagation(); nextChapter(); }}
               disabled={activeChapter === (chapters.length - 1)}
-              className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center disabled:opacity-30 hover:bg-white/20 transition-colors shrink-0"
+              className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center disabled:opacity-30 hover:bg-white/20 transition-colors shrink-0"
             >
-              <ChevronRight size={18} className="text-white" />
+              <ChevronRight size={16} className="text-white" />
             </button>
           </div>
         </div>

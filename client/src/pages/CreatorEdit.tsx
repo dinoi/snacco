@@ -141,6 +141,10 @@ export default function CreatorEdit() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [draggingChapterId, setDraggingChapterId] = useState<string | null>(null);
+  const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
+  const [newlyAddedChapterId, setNewlyAddedChapterId] = useState<string | null>(null);
+  const chapterListRef = useRef<HTMLDivElement>(null);
 
   const tutorialVideoRef = useRef<HTMLVideoElement>(null);
   const demoInputRef = useRef<HTMLInputElement>(null);
@@ -220,8 +224,7 @@ export default function CreatorEdit() {
     const maxTime = idx < sorted.length - 1 ? sorted[idx + 1].time - 1 : duration;
     newTime = Math.max(minTime, Math.min(newTime, maxTime));
     setChapters(prev => prev.map(c => c.id === chapterId ? { ...c, time: newTime } : c).sort((a, b) => a.time - b.time));
-    // Also seek video to the new position
-    if (tutorialVideoRef.current) tutorialVideoRef.current.currentTime = newTime;
+    // Do NOT seek video — marker drag is decoupled from playhead
   }, [chapters, duration]);
 
   if (!isAuthenticated || !user?.isCreator) {
@@ -376,8 +379,16 @@ export default function CreatorEdit() {
   // ── Chapter helpers ────────────────────────────────────────────────
   const addChapterAtCurrentTime = () => {
     const label = newChapterLabel.trim() || `Step ${chapters.length + 1}`;
-    setChapters(prev => [...prev, { id: crypto.randomUUID(), time: currentTime, label }].sort((a, b) => a.time - b.time));
+    const newId = crypto.randomUUID();
+    setChapters(prev => [...prev, { id: newId, time: currentTime, label }].sort((a, b) => a.time - b.time));
     setNewChapterLabel("");
+    setSelectedChapterId(newId);
+    setNewlyAddedChapterId(newId);
+    setTimeout(() => setNewlyAddedChapterId(null), 1500);
+    setTimeout(() => {
+      const el = document.getElementById(`chapter-edit-${newId}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 50);
   };
 
   const deleteChapter = (id: string) => setChapters(prev => prev.filter(c => c.id !== id));
@@ -727,9 +738,18 @@ export default function CreatorEdit() {
                   </Button>
                 </div>
 
-                <div className="space-y-2 max-h-64 overflow-y-auto">
+                <div className="space-y-2 max-h-64 overflow-y-auto" ref={chapterListRef}>
                   {chapters.map((ch, idx) => (
-                    <div key={ch.id} className="flex items-center gap-2 bg-background p-2 rounded-lg border border-border/50">
+                    <div
+                      key={ch.id}
+                      id={`chapter-edit-${ch.id}`}
+                      className={`flex items-center gap-2 p-2 rounded-lg transition-all duration-300 cursor-pointer ${
+                        selectedChapterId === ch.id
+                          ? 'bg-primary/15 border-2 border-primary/50 shadow-[0_0_8px_oklch(0.65_0.30_340/0.3)]'
+                          : 'bg-background border border-border/50 hover:border-primary/30'
+                      } ${newlyAddedChapterId === ch.id ? 'animate-[highlight-flash_1.5s_ease-out]' : ''}`}
+                      onClick={() => setSelectedChapterId(selectedChapterId === ch.id ? null : ch.id)}
+                    >
                       <div className="flex-1 min-w-0">
                         {editingChapterId === ch.id ? (
                           <input

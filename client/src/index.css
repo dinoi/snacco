@@ -164,3 +164,10 @@ video {
 ::-webkit-scrollbar-thumb:hover {
   background: oklch(0.65 0.30 340 / 0.6);
 }
+
+/* ─── Chapter marker animations ────────────────────────────────────── */
+@keyframes highlight-flash {
+  0%   { background-color: oklch(0.65 0.30 340 / 0.35); box-shadow: 0 0 12px oklch(0.65 0.30 340 / 0.5); }
+  50%  { background-color: oklch(0.65 0.30 340 / 0.2); box-shadow: 0 0 6px oklch(0.65 0.30 340 / 0.3); }
+  100% { background-color: transparent; box-shadow: none; }
+}
