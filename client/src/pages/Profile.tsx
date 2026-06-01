@@ -1,4 +1,3 @@
-import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
@@ -20,6 +19,14 @@ export default function Profile() {
 
   const { data: myTutorials, isLoading: tutorialsLoading } = trpc.tutorials.myTutorials.useQuery(undefined, {
     enabled: isAuthenticated && user?.isCreator,
+  });
+
+  const claimFreeMutation = trpc.tokens.claimFree.useMutation({
+    onSuccess: () => {
+      utils.tokens.getBalance.invalidate();
+      toast.success("20 free tokens added!");
+    },
+    onError: (err) => toast.error(err.message || "Failed to claim tokens"),
   });
 
   const setCreatorMutation = trpc.users.setCreatorMode.useMutation({
@@ -90,11 +97,12 @@ export default function Profile() {
               </div>
             </div>
             <button
-              onClick={() => navigate("/")}
-              className="flex items-center gap-1 text-xs text-primary font-semibold"
+              onClick={() => claimFreeMutation.mutate()}
+              disabled={claimFreeMutation.isPending || (tokenData?.balance ?? 0) > 0}
+              className="flex items-center gap-1 text-xs text-primary font-semibold disabled:opacity-40"
             >
               <Plus size={14} />
-              Get more
+              {claimFreeMutation.isPending ? "Adding..." : "Get 20 free"}
             </button>
           </div>
         </div>

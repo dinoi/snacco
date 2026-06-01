@@ -324,3 +324,10 @@
 - [x] Edit chapters screen: ability to add, remove, and edit chapter names
 - [x] Version badge bumped to v1.78
 - [x] Deploy to Railway (pushed to GitHub, auto-deploys)
+
+## v1.79 - Replace Confirmation + Free Token Refill
+- [x] Add confirmation dialog before replacing demo video in CreatorEdit
+- [x] Add confirmation dialog before replacing tutorial video in CreatorEdit
+- [x] "Get more" button grants 20 free tokens when user is out of tokens
+- [x] Version badge bumped to v1.79
+- [ ] Deploy to Railway (pending push)

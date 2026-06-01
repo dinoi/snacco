@@ -1,4 +1,5 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { formatTime } from "@/lib/utils";
@@ -142,6 +143,9 @@ export default function CreatorEdit() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [compressing, setCompressing] = useState(false);
   const [compressProgress, setCompressProgress] = useState(0);
+
+  // Replace confirmation dialog
+  const [confirmReplace, setConfirmReplace] = useState<"demo" | "tutorial" | null>(null);
 
   // Player state (chapter marking step)
   const [isPlaying, setIsPlaying] = useState(false);
@@ -614,7 +618,7 @@ export default function CreatorEdit() {
                 className="hidden"
               />
               <Button
-                onClick={() => demoInputRef.current?.click()}
+                onClick={() => demoVideo ? setConfirmReplace("demo") : demoInputRef.current?.click()}
                 disabled={uploading}
                 variant="outline"
                 className="w-full"
@@ -691,7 +695,7 @@ export default function CreatorEdit() {
                 className="hidden"
               />
               <Button
-                onClick={() => tutorialInputRef.current?.click()}
+                onClick={() => tutorialVideo ? setConfirmReplace("tutorial") : tutorialInputRef.current?.click()}
                 disabled={uploading}
                 variant="outline"
                 className="w-full"
@@ -1040,6 +1044,38 @@ export default function CreatorEdit() {
         )}
 
       </div>
+
+      {/* Replace video confirmation dialog */}
+      <AlertDialog open={!!confirmReplace} onOpenChange={(open) => !open && setConfirmReplace(null)}>
+        <AlertDialogContent className="bg-card border-border">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Replace {confirmReplace === "demo" ? "Demo Clip" : "Full Tutorial"}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the current video and let you upload a new one. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmReplace === "demo") {
+                  setDemoVideo(null);
+                  setThumbnailDataUrl(null);
+                  setTimeout(() => demoInputRef.current?.click(), 100);
+                } else {
+                  setTutorialVideo(null);
+                  setTutorialThumbnailDataUrl(null);
+                  setTimeout(() => tutorialInputRef.current?.click(), 100);
+                }
+                setConfirmReplace(null);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Replace
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

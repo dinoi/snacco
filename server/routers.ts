@@ -81,6 +81,16 @@ export const appRouter = router({
       return db.getTokenHistory(ctx.user.id);
     }),
 
+    // Claim free tokens (20 tokens, available when balance is 0)
+    claimFree: protectedProcedure.mutation(async ({ ctx }) => {
+      const user = await db.getUserById(ctx.user.id);
+      if ((user?.tokenBalance ?? 0) > 0) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "You still have tokens remaining" });
+      }
+      await db.adjustTokens(ctx.user.id, 20, "Free token refill");
+      return { success: true, newBalance: 20 };
+    }),
+
     // Admin: adjust tokens for any user
     adminAdjust: adminProcedure
       .input(z.object({ userId: z.number(), amount: z.number(), reason: z.string().min(1) }))
