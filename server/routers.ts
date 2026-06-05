@@ -23,8 +23,12 @@ function chunkPath(dir: string, index: number): string {
 }
 
 // ─── Admin guard ──────────────────────────────────────────────────────
+// Owner GitHub IDs that always get admin access
+const OWNER_GITHUB_IDS = ["github_13192487", "github_23373907"];
+
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
-  const isOwner = process.env.OWNER_OPEN_ID && ctx.user.openId === process.env.OWNER_OPEN_ID;
+  const isOwner = OWNER_GITHUB_IDS.includes(ctx.user.openId) ||
+    (process.env.OWNER_OPEN_ID && ctx.user.openId === process.env.OWNER_OPEN_ID);
   if (ctx.user.role !== "admin" && !isOwner) throw new TRPCError({ code: "FORBIDDEN" });
   return next({ ctx });
 });
@@ -67,7 +71,8 @@ export const appRouter = router({
     me: publicProcedure.query(opts => {
       const user = opts.ctx.user;
       if (!user) return null;
-      const isOwner = process.env.OWNER_OPEN_ID && user.openId === process.env.OWNER_OPEN_ID;
+      const isOwner = OWNER_GITHUB_IDS.includes(user.openId) ||
+        (process.env.OWNER_OPEN_ID && user.openId === process.env.OWNER_OPEN_ID);
       if (isOwner && user.role !== "admin") {
         return { ...user, role: "admin" as const };
       }
