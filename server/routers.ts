@@ -24,7 +24,8 @@ function chunkPath(dir: string, index: number): string {
 
 // ─── Admin guard ──────────────────────────────────────────────────────
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  const isOwner = process.env.OWNER_OPEN_ID && ctx.user.openId === process.env.OWNER_OPEN_ID;
+  if (ctx.user.role !== "admin" && !isOwner) throw new TRPCError({ code: "FORBIDDEN" });
   return next({ ctx });
 });
 
@@ -63,7 +64,15 @@ export const appRouter = router({
 
   // ─── Auth ───────────────────────────────────────────────────────────
   auth: router({
-    me: publicProcedure.query(opts => opts.ctx.user),
+    me: publicProcedure.query(opts => {
+      const user = opts.ctx.user;
+      if (!user) return null;
+      const isOwner = process.env.OWNER_OPEN_ID && user.openId === process.env.OWNER_OPEN_ID;
+      if (isOwner && user.role !== "admin") {
+        return { ...user, role: "admin" as const };
+      }
+      return user;
+    }),
     logout: publicProcedure.mutation(({ ctx }) => {
       ctx.res.clearCookie(COOKIE_NAME, { httpOnly: true, secure: true, sameSite: 'lax', maxAge: -1 });
       return { success: true } as const;
