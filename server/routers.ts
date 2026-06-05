@@ -448,7 +448,13 @@ export const appRouter = router({
     // Admin: list all tutorials
     adminList: adminProcedure.query(async () => {
       const tutorials = await db.getAllTutorials();
-      return Promise.all(tutorials.map(resolveVideoUrl));
+      const resolved = await Promise.all(tutorials.map(resolveVideoUrl));
+      // Attach creator names
+      const withNames = await Promise.all(resolved.map(async (t) => {
+        const creator = await db.getUserById(t.creatorId);
+        return { ...t, creatorName: creator?.name ?? "Unknown" };
+      }));
+      return withNames;
     }),
 
     // Admin: toggle publish status
@@ -456,6 +462,34 @@ export const appRouter = router({
       .input(z.object({ id: z.number(), isPublished: z.boolean() }))
       .mutation(async ({ input }) => {
         await db.setTutorialPublished(input.id, input.isPublished);
+        return { success: true };
+      }),
+
+    // Admin: delete any tutorial
+    adminDelete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const tutorial = await db.getTutorialById(input.id);
+        if (!tutorial) throw new TRPCError({ code: "NOT_FOUND" });
+
+        // Delete S3 files
+        if (tutorial.demoVideoKey) {
+          const demoKey = tutorial.demoVideoKey.replace(/^\/api\/video\//, "");
+          await storage.storageDelete(demoKey);
+        }
+        if (tutorial.tutorialVideoKey) {
+          const tutKey = tutorial.tutorialVideoKey.replace(/^\/api\/video\//, "");
+          await storage.storageDelete(tutKey);
+        }
+        if (tutorial.thumbnailKey) {
+          const thumbKey = tutorial.thumbnailKey.replace(/^\/manus-storage\//, "");
+          await storage.storageDelete(thumbKey);
+        }
+
+        // Delete chapters then tutorial
+        await db.deleteChaptersByTutorialId(input.id);
+        await db.deleteTutorial(input.id);
+
         return { success: true };
       }),
   }),

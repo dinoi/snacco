@@ -71,10 +71,9 @@ export default function Player() {
   useEffect(() => {
     if (!chapterScrollRef.current) return;
     const container = chapterScrollRef.current;
-    const activeBtn = container.children[activeChapter] as HTMLElement | undefined;
+    const activeBtn = container.querySelector(`[data-chapter-idx="${activeChapter}"]`) as HTMLElement | null;
     if (!activeBtn) return;
-    const scrollLeft = activeBtn.offsetLeft - container.offsetWidth / 2 + activeBtn.offsetWidth / 2;
-    container.scrollTo({ left: scrollLeft, behavior: 'smooth' });
+    activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
   }, [activeChapter]);
 
   const resetHideTimer = useCallback(() => {
@@ -340,11 +339,12 @@ export default function Player() {
             >
               <ChevronLeft size={16} className="text-white" />
             </button>
-            <div className="flex-1 overflow-x-auto hide-scrollbar">
-              <div ref={chapterScrollRef} className="flex gap-2 min-w-max">
+            <div ref={chapterScrollRef} className="flex-1 overflow-x-auto hide-scrollbar">
+              <div className="flex gap-2 min-w-max">
                 {chapters.map((ch, i) => (
                   <button
                     key={ch.id}
+                    data-chapter-idx={i}
                     onClick={(e) => { e.stopPropagation(); goToChapter(i); }}
                     className={cn(
                       "px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all",

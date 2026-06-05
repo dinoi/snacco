@@ -343,4 +343,12 @@
 - [x] Chapters step: fix video not loading/playing (removed poster attr blocking display, increased maxHeight to 45vh)
 - [x] Chapters step: move instruction text below video (between video and Add Step Here controls)
 - [x] Version badge bumped to v1.81
-- [ ] Deploy to Railway (pushed to GitHub, auto-deploys)
+- [x] Deploy to Railway (pushed to GitHub, auto-deploys)
+
+## v1.82 - Admin Delete + Chapter Pill Auto-Scroll
+- [x] Admin Content page: add delete button to permanently remove any tutorial (with confirmation)
+- [x] Backend: add adminDelete procedure that removes tutorial, chapters, and S3 video files
+- [x] Player.tsx: auto-scroll active chapter pill into view when playback reaches it
+- [x] Player.tsx: auto-scroll active chapter pill into view when user taps prev/next arrows
+- [x] Version badge bumped to v1.82
+- [x] Deploy to Railway

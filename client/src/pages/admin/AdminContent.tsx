@@ -1,6 +1,6 @@
 import AdminLayout from "./AdminLayout";
 import { trpc } from "@/lib/trpc";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,6 +10,7 @@ import { useState } from "react";
 export default function AdminContent() {
   const { data: tutorials, isLoading, refetch } = trpc.tutorials.adminList.useQuery();
   const [pendingId, setPendingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const setPublishedMutation = trpc.tutorials.adminSetPublished.useMutation({
     onSuccess: () => {
@@ -20,9 +21,24 @@ export default function AdminContent() {
     onError: () => { toast.error("Failed to update."); setPendingId(null); },
   });
 
+  const deleteMutation = trpc.tutorials.adminDelete.useMutation({
+    onSuccess: () => {
+      toast.success("Tutorial deleted permanently.");
+      refetch();
+      setDeletingId(null);
+    },
+    onError: (err) => { toast.error(err.message ?? "Failed to delete."); setDeletingId(null); },
+  });
+
   const toggle = (id: number, current: boolean) => {
     setPendingId(id);
     setPublishedMutation.mutate({ id, isPublished: !current });
+  };
+
+  const handleDelete = (id: number, title: string) => {
+    if (!confirm(`Permanently delete "${title}"?\n\nThis will remove the tutorial, all chapters, and video files from storage. This cannot be undone.`)) return;
+    setDeletingId(id);
+    deleteMutation.mutate({ id });
   };
 
   return (
@@ -48,7 +64,7 @@ export default function AdminContent() {
             <div className="p-12 text-center text-muted-foreground text-sm">No tutorials uploaded yet.</div>
           )}
 
-          {tutorials?.map((t, i) => (
+          {tutorials?.map((t) => (
             <div
               key={t.id}
               className="flex items-center gap-4 px-5 py-4 border-b border-border last:border-0 hover:bg-accent/20 transition-colors"
@@ -82,21 +98,35 @@ export default function AdminContent() {
                 </div>
               </div>
 
-              {/* Toggle */}
-              <Button
-                size="sm"
-                variant={t.isPublished ? "destructive" : "outline"}
-                className={!t.isPublished ? "border-green-500/40 text-green-400 hover:bg-green-500/10" : ""}
-                disabled={pendingId === t.id}
-                onClick={() => toggle(t.id, t.isPublished)}
-              >
-                {pendingId === t.id
-                  ? <Loader2 size={14} className="animate-spin" />
-                  : t.isPublished
-                    ? <><EyeOff size={14} className="mr-1.5" />Unpublish</>
-                    : <><Eye size={14} className="mr-1.5" />Publish</>
-                }
-              </Button>
+              {/* Actions */}
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant={t.isPublished ? "destructive" : "outline"}
+                  className={!t.isPublished ? "border-green-500/40 text-green-400 hover:bg-green-500/10" : ""}
+                  disabled={pendingId === t.id || deletingId === t.id}
+                  onClick={() => toggle(t.id, t.isPublished)}
+                >
+                  {pendingId === t.id
+                    ? <Loader2 size={14} className="animate-spin" />
+                    : t.isPublished
+                      ? <><EyeOff size={14} className="mr-1.5" />Unpublish</>
+                      : <><Eye size={14} className="mr-1.5" />Publish</>
+                  }
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-red-500/40 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                  disabled={deletingId === t.id || pendingId === t.id}
+                  onClick={() => handleDelete(t.id, t.title)}
+                >
+                  {deletingId === t.id
+                    ? <Loader2 size={14} className="animate-spin" />
+                    : <><Trash2 size={14} className="mr-1.5" />Delete</>
+                  }
+                </Button>
+              </div>
             </div>
           ))}
         </div>
